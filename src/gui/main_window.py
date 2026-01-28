@@ -12,13 +12,16 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QStatusBar,
+    QSystemTrayIcon,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
+from PyQt6.QtGui import QIcon
 
 from src.core.config import Settings, get_settings
 from src.core.models import Alert, Brand, ScoreResult
@@ -51,6 +54,7 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._setup_shortcuts()
+        self._setup_tray_icon()
         self._connect_signals()
         self._load_initial_data()
 
@@ -126,6 +130,61 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
+
+    def _setup_tray_icon(self) -> None:
+        """Setup system tray icon."""
+        self._tray_icon = None
+
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+
+        self._tray_icon = QSystemTrayIcon(self)
+
+        # Create a simple icon (would use a proper icon file in production)
+        # For now, use the application icon if available
+        app_icon = QApplication.instance().windowIcon()
+        if not app_icon.isNull():
+            self._tray_icon.setIcon(app_icon)
+        else:
+            # Fallback to a default icon
+            self._tray_icon.setIcon(self.style().standardIcon(
+                self.style().StandardPixmap.SP_ComputerIcon
+            ))
+
+        # Create tray menu
+        tray_menu = QMenu()
+
+        show_action = tray_menu.addAction("Show Window")
+        show_action.triggered.connect(self._show_from_tray)
+
+        tray_menu.addSeparator()
+
+        refresh_action = tray_menu.addAction("Toggle Refresh")
+        refresh_action.triggered.connect(self.refresh_btn.click)
+
+        tray_menu.addSeparator()
+
+        quit_action = tray_menu.addAction("Quit")
+        quit_action.triggered.connect(QApplication.instance().quit)
+
+        self._tray_icon.setContextMenu(tray_menu)
+        self._tray_icon.setToolTip("Seller Opportunity Scanner")
+
+        # Double-click to show
+        self._tray_icon.activated.connect(self._on_tray_activated)
+
+        self._tray_icon.show()
+
+    def _show_from_tray(self) -> None:
+        """Show window from tray."""
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        """Handle tray icon activation."""
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self._show_from_tray()
 
     def _setup_shortcuts(self) -> None:
         """Setup keyboard shortcuts."""
@@ -323,6 +382,15 @@ class MainWindow(QMainWindow):
 
         # Show in status bar
         self.status_bar.showMessage(f"Alert: {alert.message}", 5000)
+
+        # Show tray notification
+        if self._tray_icon and self._settings.alerts.show_notification:
+            self._tray_icon.showMessage(
+                "Seller Opportunity Scanner",
+                alert.message,
+                QSystemTrayIcon.MessageIcon.Information,
+                5000,
+            )
 
         # Optional: play system sound
         if self._settings.alerts.play_sound:
