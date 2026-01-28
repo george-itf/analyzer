@@ -5,9 +5,10 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
+from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -16,6 +17,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QPushButton,
     QTableView,
     QToolButton,
@@ -252,6 +254,9 @@ class ScoreTableModel(QAbstractTableModel):
 class BrandTab(QWidget):
     """Tab widget for displaying brand-specific opportunity data."""
 
+    # Signal emitted when selection changes: (count, total_profit, avg_score)
+    selection_changed = pyqtSignal(int, float, float)
+
     def __init__(self, brand: Brand, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.brand = brand
@@ -300,8 +305,37 @@ class BrandTab(QWidget):
         columns_btn.setMenu(self.columns_menu)
         toolbar.addWidget(columns_btn)
 
+        # Bulk actions button
+        bulk_btn = QToolButton()
+        bulk_btn.setText("Bulk Actions ▾")
+        bulk_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.bulk_menu = QMenu(bulk_btn)
+        bulk_btn.setMenu(self.bulk_menu)
+        toolbar.addWidget(bulk_btn)
+
+        # Setup bulk actions menu
+        copy_asins_action = QAction("📋 Copy ASINs", self)
+        copy_asins_action.triggered.connect(self._bulk_copy_asins)
+        self.bulk_menu.addAction(copy_asins_action)
+
+        copy_parts_action = QAction("📋 Copy Part Numbers", self)
+        copy_parts_action.triggered.connect(self._bulk_copy_parts)
+        self.bulk_menu.addAction(copy_parts_action)
+
+        self.bulk_menu.addSeparator()
+
+        open_amazon_action = QAction("🌐 Open All on Amazon (max 10)", self)
+        open_amazon_action.triggered.connect(self._bulk_open_amazon)
+        self.bulk_menu.addAction(open_amazon_action)
+
+        self.bulk_menu.addSeparator()
+
+        export_selected_action = QAction("💾 Export Selected", self)
+        export_selected_action.triggered.connect(self._bulk_export)
+        self.bulk_menu.addAction(export_selected_action)
+
         # Export button
-        export_btn = QPushButton("Export")
+        export_btn = QPushButton("Export All")
         export_btn.clicked.connect(self._on_export)
         toolbar.addWidget(export_btn)
 
@@ -319,7 +353,7 @@ class BrandTab(QWidget):
         self.table.setModel(self.proxy_model)
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)  # Multi-select
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -348,10 +382,11 @@ class BrandTab(QWidget):
         # Set row height for score rings
         self.table.verticalHeader().setDefaultSectionSize(55)
 
-        # Connect double-click and context menu
+        # Connect double-click, context menu, and selection
         self.table.doubleClicked.connect(self._on_row_double_clicked)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_context_menu)
+        self.table.selectionModel().selectionChanged.connect(self._on_selection_changed)
 
         layout.addWidget(self.table)
 
@@ -412,6 +447,107 @@ class BrandTab(QWidget):
         # This is a simplified filter - for production, use a custom QSortFilterProxyModel
         # that checks multiple conditions
         self._on_filter_changed(self.filter_input.text())
+
+    def _on_selection_changed(self) -> None:
+        """Handle table selection change."""
+        selected = self._get_selected_results()
+        if not selected:
+            self.selection_changed.emit(0, 0.0, 0.0)
+            return
+
+        total_profit = sum(
+            float(
+                r.scenario_cost_1.profit_net
+                if r.winning_scenario == "cost_1"
+                else r.scenario_cost_5plus.profit_net
+            )
+            for r in selected
+        )
+        avg_score = sum(r.score for r in selected) / len(selected)
+
+        self.selection_changed.emit(len(selected), total_profit, avg_score)
+
+    def _get_selected_results(self) -> list[ScoreResult]:
+        """Get all selected ScoreResult objects."""
+        results = []
+        selection = self.table.selectionModel().selectedRows()
+
+        for proxy_index in selection:
+            source_index = self.proxy_model.mapToSource(proxy_index)
+            result = self.model.get_result(source_index.row())
+            if result:
+                results.append(result)
+
+        return results
+
+    def _bulk_copy_asins(self) -> None:
+        """Copy all selected ASINs to clipboard."""
+        selected = self._get_selected_results()
+        if not selected:
+            return
+
+        asins = [r.asin for r in selected]
+        text = "\n".join(asins)
+
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(text)
+
+    def _bulk_copy_parts(self) -> None:
+        """Copy all selected part numbers to clipboard."""
+        selected = self._get_selected_results()
+        if not selected:
+            return
+
+        parts = [r.part_number for r in selected]
+        text = "\n".join(parts)
+
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(text)
+
+    def _bulk_open_amazon(self) -> None:
+        """Open selected items on Amazon (max 10)."""
+        import webbrowser
+
+        selected = self._get_selected_results()[:10]  # Limit to 10
+        if not selected:
+            return
+
+        if len(selected) > 5:
+            reply = QMessageBox.question(
+                self,
+                "Open Multiple Tabs",
+                f"This will open {len(selected)} browser tabs. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        for result in selected:
+            url = f"https://www.amazon.co.uk/dp/{result.asin}"
+            webbrowser.open(url)
+
+    def _bulk_export(self) -> None:
+        """Export selected items to file."""
+        from src.utils.export import Exporter
+
+        selected = self._get_selected_results()
+        if not selected:
+            return
+
+        default_name = Exporter.generate_filename(f"{self.brand.value}_selected", "xlsx")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Selected Data",
+            default_name,
+            "Excel Files (*.xlsx);;CSV Files (*.csv)",
+        )
+        if file_path:
+            if file_path.endswith(".csv"):
+                Exporter.export_to_csv(selected, file_path)
+            else:
+                Exporter.export_to_xlsx(selected, file_path)
 
     def update_results(
         self,

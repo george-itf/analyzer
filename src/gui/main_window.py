@@ -26,6 +26,7 @@ from PyQt6.QtGui import QIcon
 from src.core.config import Settings, get_settings
 from src.core.models import Alert, Brand, ScoreResult
 from src.core.scheduler import RefreshController
+from src.core.sounds import SoundEffect, get_sound_player
 from src.core.updater import Updater, UpdateInfo, get_current_version
 from src.db.repository import Repository
 
@@ -118,6 +119,7 @@ class MainWindow(QMainWindow):
         self.brand_tabs: dict[str, BrandTab] = {}
         for brand in Brand:
             tab = BrandTab(brand)
+            tab.selection_changed.connect(self._on_brand_selection_changed)
             self.tabs.addTab(tab, brand.value)
             self.brand_tabs[brand.value] = tab
 
@@ -146,6 +148,12 @@ class MainWindow(QMainWindow):
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
+
+        # Add permanent selection info widget to status bar
+        self.selection_info = QLabel("")
+        self.selection_info.setStyleSheet("color: #6c757d; margin-right: 10px;")
+        self.status_bar.addPermanentWidget(self.selection_info)
+
         self.status_bar.showMessage("Ready")
 
     def _setup_tray_icon(self) -> None:
@@ -389,6 +397,8 @@ class MainWindow(QMainWindow):
 
     def _on_alert_triggered(self, alert: Alert) -> None:
         """Handle a new alert from the refresh worker."""
+        from src.core.models import AlertType
+
         self._alert_count += 1
         self.alert_label.setText(f"🔔 {self._alert_count}")
         self.alert_label.setStyleSheet("color: #dc3545; font-weight: bold;")  # Red when alerts
@@ -409,12 +419,13 @@ class MainWindow(QMainWindow):
                 5000,
             )
 
-        # Optional: play system sound
+        # Play sound based on alert type
         if self._settings.alerts.play_sound:
-            try:
-                QApplication.beep()
-            except Exception:
-                pass  # Ignore sound errors
+            sound_player = get_sound_player()
+            if alert.alert_type == AlertType.SCORE_THRESHOLD:
+                sound_player.play(SoundEffect.NEW_OPPORTUNITY)
+            else:
+                sound_player.play(SoundEffect.ALERT)
 
     def _on_import_completed(self, batch_id: str) -> None:
         """Handle CSV import completion."""
@@ -440,6 +451,15 @@ class MainWindow(QMainWindow):
         """Handle mapping update."""
         for brand in Brand:
             self._refresh_brand_tab(brand)
+
+    def _on_brand_selection_changed(self, count: int, total_profit: float, avg_score: float) -> None:
+        """Handle selection change in brand tabs."""
+        if count == 0:
+            self.selection_info.setText("")
+        else:
+            self.selection_info.setText(
+                f"Selected: {count} items | Profit: £{total_profit:.2f} | Avg Score: {avg_score:.0f}"
+            )
 
     def _on_settings_changed(self) -> None:
         """Handle settings change."""

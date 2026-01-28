@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (
 from src.core.models import Brand, ScoreResult
 from src.db.repository import Repository
 
+from .charts import BarChartWidget, DonutChartWidget, ScoreDistributionWidget
+
 
 class StatCard(QFrame):
     """A card widget displaying a single statistic."""
@@ -258,6 +260,26 @@ class DashboardTab(QWidget):
         brands_layout.addStretch()
         content_layout.addWidget(brands_group)
 
+        # Charts row
+        charts_group = QGroupBox("Analytics")
+        charts_layout = QHBoxLayout(charts_group)
+        charts_layout.setSpacing(16)
+
+        # Score distribution histogram
+        self.score_distribution = ScoreDistributionWidget()
+        charts_layout.addWidget(self.score_distribution)
+
+        # Opportunities by brand (donut)
+        self.brand_donut = DonutChartWidget("Opportunities by Brand")
+        charts_layout.addWidget(self.brand_donut)
+
+        # Profit by brand (bar)
+        self.profit_bar = BarChartWidget("Est. Profit by Brand")
+        charts_layout.addWidget(self.profit_bar)
+
+        charts_layout.addStretch()
+        content_layout.addWidget(charts_group)
+
         # Movers row
         movers_group = QGroupBox("Recent Changes")
         movers_layout = QHBoxLayout(movers_group)
@@ -340,6 +362,29 @@ class DashboardTab(QWidget):
                     stats["avg_score"],
                     stats["total_profit"],
                 )
+
+        # Update charts
+        self.score_distribution.set_scores(all_scores)
+
+        # Opportunities by brand donut chart
+        brand_colors = {
+            "Makita": "#00a0e0",   # Makita teal
+            "DeWalt": "#febd17",   # DeWalt yellow
+            "Timco": "#e74c3c",    # Red
+        }
+        donut_data = [
+            (name, stats["opportunities"], brand_colors.get(name, "#6c757d"))
+            for name, stats in brand_stats.items()
+            if stats["opportunities"] > 0
+        ]
+        self.brand_donut.set_data(donut_data)
+
+        # Profit by brand bar chart
+        bar_data = [
+            (name, float(stats["total_profit"]), brand_colors.get(name, "#6c757d"))
+            for name, stats in brand_stats.items()
+        ]
+        self.profit_bar.set_data(bar_data)
 
         # Update movers (would need score history comparison - simplified for now)
         # In a full implementation, we'd compare today's scores to yesterday's
