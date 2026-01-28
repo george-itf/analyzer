@@ -328,7 +328,7 @@ class TokenStatus:
     refill_in_seconds: int = 60
     tokens_consumed_last: int = 0
     token_flow_reduction: float = 0.0
-    last_updated: datetime = field(default_factory=datetime.now)
+    last_updated: datetime | None = None  # None = never fetched token status yet
 
     @property
     def tokens_per_minute(self) -> int:

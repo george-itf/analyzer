@@ -123,7 +123,14 @@ class KeepaClient:
         return get_mock_keepa_response(params.get("asin", "").split(","))
 
     def can_make_request(self, tokens_needed: int = 1) -> bool:
-        """Check if we have enough tokens for a request."""
+        """Check if we have enough tokens for a request.
+        
+        Returns True if we haven't made any requests yet (token count unknown)
+        or if we have enough tokens.
+        """
+        # If we haven't made any requests yet, assume we can (API will tell us if not)
+        if self._token_status.last_updated is None:
+            return True
         return self._token_status.tokens_left >= tokens_needed
 
     def wait_for_tokens(self, tokens_needed: int = 1) -> float:
