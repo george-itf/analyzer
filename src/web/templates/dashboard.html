@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seller Opportunity Scanner</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+            color: #212529;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        header p {
+            opacity: 0.9;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+
+        .stat-card .value.green { color: #28a745; }
+        .stat-card .value.red { color: #dc3545; }
+        .stat-card .value.blue { color: #007bff; }
+
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .section h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #212529;
+        }
+
+        .brand-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .brand-tab {
+            padding: 8px 16px;
+            border: none;
+            background: #e9ecef;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .brand-tab:hover {
+            background: #dee2e6;
+        }
+
+        .brand-tab.active {
+            background: #007bff;
+            color: white;
+        }
+
+        .brand-tab.makita.active { background: #00a0e0; }
+        .brand-tab.dewalt.active { background: #febd17; color: #212529; }
+        .brand-tab.timco.active { background: #e74c3c; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        th {
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .score-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .score-high { background: #d4edda; color: #155724; }
+        .score-medium { background: #fff3cd; color: #856404; }
+        .score-low { background: #f8d7da; color: #721c24; }
+
+        .profit { color: #28a745; font-weight: 600; }
+        .profit.negative { color: #dc3545; }
+
+        .amazon-link {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .amazon-link:hover {
+            text-decoration: underline;
+        }
+
+        .chart-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .chart-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .chart-box h3 {
+            font-size: 14px;
+            color: #6c757d;
+            margin-bottom: 12px;
+        }
+
+        .bar-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .bar-label {
+            width: 70px;
+            font-size: 12px;
+            color: #495057;
+        }
+
+        .bar-track {
+            flex: 1;
+            height: 24px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .bar-value {
+            width: 50px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .refresh-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .refresh-btn:hover {
+            background: #0056b3;
+        }
+
+        .last-updated {
+            font-size: 12px;
+            color: #6c757d;
+            margin-left: auto;
+        }
+
+        .header-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 12px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .stat-card .value {
+                font-size: 24px;
+            }
+
+            table {
+                font-size: 14px;
+            }
+
+            th, td {
+                padding: 8px 4px;
+            }
+
+            .hide-mobile {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Seller Opportunity Scanner</h1>
+            <p>Remote Dashboard</p>
+        </header>
+
+        <div class="stats-grid" id="stats-grid">
+            <div class="stat-card">
+                <div class="label">Total Items</div>
+                <div class="value" id="total-items">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Opportunities</div>
+                <div class="value green" id="opportunities">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Avg Score</div>
+                <div class="value blue" id="avg-score">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Restricted</div>
+                <div class="value red" id="restricted">-</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="header-row">
+                <h2>📈 Analytics</h2>
+            </div>
+            <div class="chart-container">
+                <div class="chart-box">
+                    <h3>Score Distribution</h3>
+                    <div class="bar-chart" id="score-chart"></div>
+                </div>
+                <div class="chart-box">
+                    <h3>Opportunities by Brand</h3>
+                    <div class="bar-chart" id="brand-chart"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="header-row">
+                <h2>🏆 Top Opportunities</h2>
+                <button class="refresh-btn" onclick="loadData()">Refresh</button>
+                <span class="last-updated" id="last-updated"></span>
+            </div>
+
+            <div class="brand-tabs">
+                <button class="brand-tab active" data-brand="all">All</button>
+                <button class="brand-tab makita" data-brand="Makita">Makita</button>
+                <button class="brand-tab dewalt" data-brand="DeWalt">DeWalt</button>
+                <button class="brand-tab timco" data-brand="Timco">Timco</button>
+            </div>
+
+            <div id="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Score</th>
+                            <th>Part #</th>
+                            <th>ASIN</th>
+                            <th class="hide-mobile">Title</th>
+                            <th>Profit</th>
+                            <th class="hide-mobile">Margin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scores-table">
+                        <tr><td colspan="6" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentBrand = 'all';
+        let allData = {};
+
+        async function loadData() {
+            try {
+                // Load summary
+                const summaryRes = await fetch('/api/summary');
+                const summary = await summaryRes.json();
+
+                document.getElementById('total-items').textContent = summary.total_items;
+                document.getElementById('opportunities').textContent = summary.opportunities;
+                document.getElementById('avg-score').textContent = summary.avg_score;
+                document.getElementById('restricted').textContent = summary.restricted;
+
+                // Update last updated time
+                const updated = new Date(summary.updated_at);
+                document.getElementById('last-updated').textContent = 
+                    'Updated: ' + updated.toLocaleTimeString();
+
+                // Load score distribution
+                const distRes = await fetch('/api/score-distribution');
+                const dist = await distRes.json();
+                renderScoreChart(dist.buckets);
+
+                // Render brand chart
+                renderBrandChart(summary.brands);
+
+                // Load top opportunities
+                const topRes = await fetch('/api/top');
+                const top = await topRes.json();
+                allData.all = top.items;
+
+                // Load each brand
+                for (const brand of ['Makita', 'DeWalt', 'Timco']) {
+                    const brandRes = await fetch(`/api/scores/${brand}`);
+                    const brandData = await brandRes.json();
+                    allData[brand] = brandData.items;
+                }
+
+                renderTable();
+
+            } catch (error) {
+                console.error('Failed to load data:', error);
+                document.getElementById('scores-table').innerHTML = 
+                    '<tr><td colspan="6" class="loading">Failed to load data</td></tr>';
+            }
+        }
+
+        function renderScoreChart(buckets) {
+            const colors = ['#dc3545', '#fd7e14', '#ffc107', '#28a745', '#20c997'];
+            const maxCount = Math.max(...buckets.map(b => b.count)) || 1;
+
+            const html = buckets.map((bucket, i) => `
+                <div class="bar-row">
+                    <span class="bar-label">${bucket.range}</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: ${(bucket.count / maxCount) * 100}%; background: ${colors[i]}"></div>
+                    </div>
+                    <span class="bar-value">${bucket.count}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('score-chart').innerHTML = html;
+        }
+
+        function renderBrandChart(brands) {
+            const brandColors = {
+                'Makita': '#00a0e0',
+                'DeWalt': '#febd17',
+                'Timco': '#e74c3c'
+            };
+
+            const maxOpp = Math.max(...Object.values(brands).map(b => b.opportunities)) || 1;
+
+            const html = Object.entries(brands).map(([name, data]) => `
+                <div class="bar-row">
+                    <span class="bar-label">${name}</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: ${(data.opportunities / maxOpp) * 100}%; background: ${brandColors[name] || '#6c757d'}"></div>
+                    </div>
+                    <span class="bar-value">${data.opportunities}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('brand-chart').innerHTML = html;
+        }
+
+        function renderTable() {
+            const items = currentBrand === 'all' ? allData.all : allData[currentBrand];
+            
+            if (!items || items.length === 0) {
+                document.getElementById('scores-table').innerHTML = 
+                    '<tr><td colspan="6" class="loading">No data</td></tr>';
+                return;
+            }
+
+            const html = items.slice(0, 50).map(item => {
+                const scoreClass = item.score >= 70 ? 'score-high' : 
+                                   item.score >= 40 ? 'score-medium' : 'score-low';
+                const profitClass = item.profit >= 0 ? 'profit' : 'profit negative';
+
+                return `
+                    <tr>
+                        <td><span class="score-badge ${scoreClass}">${item.score}</span></td>
+                        <td>${item.part_number}</td>
+                        <td><a href="https://www.amazon.co.uk/dp/${item.asin}" target="_blank" class="amazon-link">${item.asin}</a></td>
+                        <td class="hide-mobile">${(item.title || '').substring(0, 40)}${item.title && item.title.length > 40 ? '...' : ''}</td>
+                        <td class="${profitClass}">£${item.profit.toFixed(2)}</td>
+                        <td class="hide-mobile">${(item.margin * 100).toFixed(1)}%</td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('scores-table').innerHTML = html;
+        }
+
+        // Tab switching
+        document.querySelectorAll('.brand-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.brand-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentBrand = tab.dataset.brand;
+                renderTable();
+            });
+        });
+
+        // Initial load
+        loadData();
+
+        // Auto-refresh every 60 seconds
+        setInterval(loadData, 60000);
+    </script>
+</body>
+</html>

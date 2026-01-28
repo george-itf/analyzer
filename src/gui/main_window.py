@@ -29,6 +29,7 @@ from src.core.scheduler import RefreshController
 from src.core.sounds import SoundEffect, get_sound_player
 from src.core.updater import Updater, UpdateInfo, get_current_version
 from src.db.repository import Repository
+from src.web.server import WebServer
 
 from .brand_tab import BrandTab
 from .competitors_tab import CompetitorsTab
@@ -50,6 +51,7 @@ class MainWindow(QMainWindow):
         self._settings = settings or get_settings()
         self._repo = Repository()
         self._refresh_controller: RefreshController | None = None
+        self._web_server: WebServer | None = None
 
         self.setWindowTitle("Seller Opportunity Scanner")
         self.setMinimumSize(1200, 800)
@@ -94,6 +96,12 @@ class MainWindow(QMainWindow):
         self.version_label = QLabel(f"v{get_current_version()}")
         self.version_label.setStyleSheet("color: #6c757d; font-size: 11px;")
         top_bar.addWidget(self.version_label)
+
+        # Web dashboard toggle
+        self.web_btn = QPushButton("Start Web Dashboard")
+        self.web_btn.setCheckable(True)
+        self.web_btn.clicked.connect(self._on_toggle_web)
+        top_bar.addWidget(self.web_btn)
 
         # Refresh toggle
         self.refresh_btn = QPushButton("Start Refresh")
@@ -326,6 +334,42 @@ class MainWindow(QMainWindow):
 
         tab.update_results(results, titles, profit_history)
 
+    def _on_toggle_web(self, checked: bool) -> None:
+        """Toggle web dashboard server."""
+        if checked:
+            self._start_web_server()
+        else:
+            self._stop_web_server()
+
+    def _start_web_server(self) -> None:
+        """Start the web dashboard server."""
+        if self._web_server and self._web_server.is_running:
+            return
+
+        self._web_server = WebServer(port=5050)
+        url = self._web_server.start()
+
+        self.web_btn.setText(f"Web: {url}")
+        self.status_bar.showMessage(f"Web dashboard started at {url}", 5000)
+
+        # Show notification with URL
+        if self._tray_icon:
+            self._tray_icon.showMessage(
+                "Web Dashboard Started",
+                f"Access from any device:\n{url}",
+                QSystemTrayIcon.MessageIcon.Information,
+                5000,
+            )
+
+    def _stop_web_server(self) -> None:
+        """Stop the web dashboard server."""
+        if self._web_server:
+            self._web_server.stop()
+            self._web_server = None
+
+        self.web_btn.setText("Start Web Dashboard")
+        self.status_bar.showMessage("Web dashboard stopped", 3000)
+
     def _on_toggle_refresh(self, checked: bool) -> None:
         """Toggle background refresh."""
         if checked:
@@ -539,5 +583,9 @@ class MainWindow(QMainWindow):
         # Stop refresh
         if self._refresh_controller:
             self._refresh_controller.stop()
+
+        # Stop web server
+        if self._web_server:
+            self._web_server.stop()
 
         event.accept()
