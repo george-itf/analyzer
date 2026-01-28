@@ -1,0 +1,42 @@
+{
+  "tokensLeft": 350,
+  "refillRate": 20,
+  "refillIn": 60,
+  "tokensConsumed": 5,
+  "tokenFlowReduction": 0.0,
+  "processingTimeInMs": 150,
+  "products": [
+    {
+      "asin": "B07RBJYQQN",
+      "domainId": 2,
+      "title": "Makita DHP482Z 18V LXT Combi Drill Body Only",
+      "csv": [
+        null,
+        [21564000, 8995, 21564100, 8999, 21564200, 9050],
+        null,
+        null,
+        null,
+        null,
+        null,
+        [21564000, 7500, 21564100, 7600, 21564200, 7550],
+        null, null, null, null, null, null, null, null, null, null,
+        [21564000, 7800, 21564100, 7850, 21564200, 7900]
+      ],
+      "stats": {
+        "current": [8995, 8999, -1, 15000, 0, 0, 0, 7550, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7900, 0],
+        "avg30": [9000, 9000, -1, 0, 0, 0, 0, 7550, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7850, 0],
+        "min30": [8500, 8500, -1, 0, 0, 0, 0, 7200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7500, 0],
+        "max30": [9500, 9500, -1, 0, 0, 0, 0, 7900, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8200, 0],
+        "salesRankDrops30": [45, 0, 0]
+      },
+      "offers": [
+        {"offerId": 1, "isFBA": false, "isPrime": false, "condition": 1},
+        {"offerId": 2, "isFBA": false, "isPrime": false, "condition": 1},
+        {"offerId": 3, "isFBA": true, "isPrime": true, "condition": 1}
+      ],
+      "liveOffersOrder": [1, 2, 3],
+      "offerCountNew": [21564000, 5, 21564100, 5, 21564200, 6],
+      "buyBoxSellerIdHistory": ["SELLER123"]
+    }
+  ]
+}
