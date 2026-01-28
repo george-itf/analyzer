@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -51,6 +51,9 @@ class RefreshWorker(QObject):
         self._paused = False
         self._mutex = QMutex()
         self._priority_queue: deque[str] = deque()  # ASINs to refresh immediately
+        self._retry_queue: deque[tuple[str, int, datetime]] = deque()  # (ASIN, retry_count, next_retry_time)
+        self._max_retries = 3
+        self._retry_delays = [30, 120, 300]  # Seconds to wait before retry attempts
 
     def start_refresh(self) -> None:
         """Start the refresh loop."""
@@ -80,6 +83,117 @@ class RefreshWorker(QObject):
             self.log_message.emit(f"Queued {len(asins)} ASINs for priority refresh")
         finally:
             self._mutex.unlock()
+
+    def _add_to_retry_queue(self, asin: str, current_retry: int = 0) -> None:
+        """Add an ASIN to the retry queue with exponential backoff."""
+        if current_retry >= self._max_retries:
+            self.log_message.emit(f"Max retries reached for {asin}, giving up")
+            return
+
+        delay = self._retry_delays[min(current_retry, len(self._retry_delays) - 1)]
+        next_retry = datetime.now() + timedelta(seconds=delay)
+
+        self._mutex.lock()
+        try:
+            # Check if already in retry queue
+            for item in self._retry_queue:
+                if item[0] == asin:
+                    return  # Already queued
+            self._retry_queue.append((asin, current_retry + 1, next_retry))
+            self.log_message.emit(f"Queued {asin} for retry #{current_retry + 1} in {delay}s")
+        finally:
+            self._mutex.unlock()
+
+    def _process_retry_queue(self) -> bool:
+        """Process items ready for retry. Returns True if items were processed."""
+        now = datetime.now()
+        ready_items: list[tuple[str, int]] = []
+
+        self._mutex.lock()
+        try:
+            # Find items ready for retry
+            remaining: deque[tuple[str, int, datetime]] = deque()
+            while self._retry_queue:
+                asin, retry_count, next_time = self._retry_queue.popleft()
+                if next_time <= now:
+                    ready_items.append((asin, retry_count))
+                else:
+                    remaining.append((asin, retry_count, next_time))
+            self._retry_queue = remaining
+        finally:
+            self._mutex.unlock()
+
+        if not ready_items:
+            return False
+
+        self.log_message.emit(f"Retrying {len(ready_items)} failed ASINs...")
+
+        # Get candidates for these ASINs
+        candidates = self.repo.get_all_active_candidates()
+        asin_to_candidates: dict[str, list[AsinCandidate]] = {}
+        asin_to_retry_count: dict[str, int] = {}
+        for asin, retry_count in ready_items:
+            asin_to_retry_count[asin] = retry_count
+
+        for c in candidates:
+            if c.asin in asin_to_retry_count:
+                asin_to_candidates.setdefault(c.asin, []).append(c)
+
+        if not asin_to_candidates:
+            return True
+
+        try:
+            wait_time = self.keepa.wait_for_tokens(len(asin_to_candidates))
+            if wait_time > 0:
+                # Put items back in queue
+                for asin, retry_count in ready_items:
+                    self._retry_queue.append((asin, retry_count, now + timedelta(seconds=wait_time)))
+                return False
+
+            snapshots, response = self.keepa.fetch_and_parse(
+                list(asin_to_candidates.keys()), days=90, include_buy_box=False
+            )
+
+            ts = response.token_status
+            self.token_status_updated.emit(ts.tokens_left, ts.refill_rate, ts.refill_in_seconds)
+
+            # Track which ASINs succeeded
+            succeeded_asins = {s.asin for s in snapshots}
+
+            for snapshot in snapshots:
+                asin = snapshot.asin
+                candidates_for_asin = asin_to_candidates.get(asin, [])
+
+                for candidate in candidates_for_asin:
+                    if candidate.id:
+                        self.repo.save_keepa_snapshot(candidate.id, snapshot)
+                        spapi_snapshot = self._get_spapi_data(candidate, snapshot)
+
+                        item = self.repo.get_supplier_item_by_id(candidate.supplier_item_id)
+                        if item:
+                            result = self.scoring.calculate(item, candidate, snapshot, spapi_snapshot)
+                            self.repo.save_score_history(candidate.id, result)
+                            self.score_updated.emit(
+                                candidate.brand.value,
+                                candidate.asin,
+                                result.score,
+                            )
+
+            # Re-queue failed ASINs
+            for asin in asin_to_candidates:
+                if asin not in succeeded_asins:
+                    self._add_to_retry_queue(asin, asin_to_retry_count[asin])
+
+            self.log_message.emit(f"Retry completed: {len(succeeded_asins)} succeeded, {len(asin_to_candidates) - len(succeeded_asins)} failed again")
+
+        except Exception as e:
+            logger.exception("Retry processing error")
+            # Re-queue all items
+            for asin, retry_count in ready_items:
+                self._add_to_retry_queue(asin, retry_count)
+            self.error_occurred.emit(f"Retry error: {e}")
+
+        return True
 
     def _process_priority_queue(self) -> bool:
         """Process priority queue items. Returns True if items were processed."""
@@ -185,6 +299,10 @@ class RefreshWorker(QObject):
                 # Priority queue takes precedence - process immediately
                 if self._process_priority_queue():
                     continue  # Check again for more priority items
+
+                # Process retry queue
+                if self._process_retry_queue():
+                    continue  # Check for more retry items
 
                 # Pass 1: Continuous wide scan
                 if pass1_counter <= 0:
@@ -322,6 +440,9 @@ class RefreshWorker(QObject):
                 logger.exception(f"Pass 1 error for batch starting at {i}")
                 fail_count += len(batch_asins)
                 self.error_occurred.emit(f"Pass 1 error: {e}")
+                # Add failed ASINs to retry queue
+                for asin in batch_asins:
+                    self._add_to_retry_queue(asin)
 
             i += batch_size
 
@@ -400,6 +521,9 @@ class RefreshWorker(QObject):
             except Exception as e:
                 fail_count += len(batch_asins)
                 self.error_occurred.emit(f"Pass 2 error: {e}")
+                # Add failed ASINs to retry queue
+                for asin in batch_asins:
+                    self._add_to_retry_queue(asin)
 
             i += batch_size
 
