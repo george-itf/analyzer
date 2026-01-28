@@ -6,7 +6,7 @@
 - [x] SP-API batch fees
 - [x] Score history visualization (sparklines)
 - [x] Refresh worker error recovery (retry queue)
-- [ ] GUI unit tests (pytest-qt)
+- [x] GUI unit tests (pytest-qt) - 28 tests
 - [x] Settings persistence fix
 
 ## High Value Features
