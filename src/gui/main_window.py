@@ -26,6 +26,7 @@ from src.core.scheduler import RefreshController
 from src.db.repository import Repository
 
 from .brand_tab import BrandTab
+from .dashboard_tab import DashboardTab
 from .diagnostics_tab import DiagnosticsTab
 from .imports_tab import ImportsTab
 from .mappings_tab import MappingsTab
@@ -91,6 +92,10 @@ class MainWindow(QMainWindow):
         # Tab widget
         self.tabs = QTabWidget()
 
+        # Dashboard tab (first)
+        self.dashboard_tab = DashboardTab()
+        self.tabs.addTab(self.dashboard_tab, "Dashboard")
+
         # Brand tabs
         self.brand_tabs: dict[str, BrandTab] = {}
         for brand in Brand:
@@ -139,6 +144,7 @@ class MainWindow(QMainWindow):
 
         self.mappings_tab.refresh_data()
         self.diagnostics_tab.refresh_data()
+        self.dashboard_tab.refresh_data()
 
     def _refresh_brand_tab(self, brand: Brand) -> None:
         """Refresh data for a brand tab."""
@@ -239,9 +245,10 @@ class MainWindow(QMainWindow):
         self.last_refresh_label.setText(f"Last refresh: {now}")
         self.status_bar.showMessage(f"{pass_name}: {success} ok, {fail} failed")
 
-        # Refresh all brand tabs
+        # Refresh all brand tabs and dashboard
         for brand in Brand:
             self._refresh_brand_tab(brand)
+        self.dashboard_tab.refresh_data()
 
     def _on_refresh_error(self, error: str) -> None:
         """Handle refresh error."""
