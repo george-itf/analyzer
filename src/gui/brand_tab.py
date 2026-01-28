@@ -6,24 +6,78 @@ from decimal import Decimal
 from typing import Any
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QAction, QColor
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QTableView,
+    QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from src.core.models import Brand, ScoreResult
 
+from .context_menu import TableContextMenu
 from .detail_dialog import DetailDialog
 from .widgets import ScoreRingDelegate, SparklineDelegate
+
+
+def profit_color(profit: float) -> QColor:
+    """Return color based on profit value - green for positive, red for negative."""
+    if profit >= 10:
+        return QColor(200, 255, 200)  # Strong green
+    elif profit >= 5:
+        return QColor(220, 255, 220)  # Light green
+    elif profit >= 0:
+        return QColor(240, 255, 240)  # Very light green
+    elif profit >= -5:
+        return QColor(255, 240, 240)  # Very light red
+    else:
+        return QColor(255, 200, 200)  # Red
+
+
+def margin_color(margin: float) -> QColor:
+    """Return color based on margin value."""
+    if margin >= 0.20:
+        return QColor(200, 255, 200)  # Strong green
+    elif margin >= 0.15:
+        return QColor(220, 255, 220)  # Light green
+    elif margin >= 0.10:
+        return QColor(240, 255, 240)  # Very light green
+    elif margin >= 0:
+        return QColor(255, 255, 240)  # Light yellow
+    else:
+        return QColor(255, 220, 220)  # Light red
+
+
+COLUMN_TOOLTIPS = {
+    "score": "Overall opportunity score (0-100). Higher is better.",
+    "trend": "Profit trend over recent calculations.",
+    "part_number": "Supplier part/SKU number.",
+    "asin": "Amazon Standard Identification Number.",
+    "title": "Product title from Amazon.",
+    "cost_1": "Your cost for 1 unit (ex VAT).",
+    "cost_5plus": "Your cost for 5+ units (ex VAT).",
+    "sell_gross": "Safe selling price including VAT.",
+    "profit": "Net profit per unit (ex VAT).",
+    "margin": "Net profit margin (ex VAT).",
+    "sales": "Estimated monthly sales (Keepa rank drops).",
+    "offers": "Number of competing offers.",
+    "amazon": "Is Amazon selling this product?",
+    "restricted": "Is this product restricted for you?",
+    "scenario": "Which cost scenario wins (1 or 5+).",
+    "flags": "Warning flags (e.g., LOW_MARGIN, VOLATILE).",
+    "updated": "When this score was last calculated.",
+}
 
 
 class ScoreTableModel(QAbstractTableModel):
@@ -107,6 +161,23 @@ class ScoreTableModel(QAbstractTableModel):
                 return QColor(255, 200, 200)
             if col_key == "amazon" and result.amazon_present:
                 return QColor(255, 230, 200)
+            # Profit/margin color gradients
+            winning = (
+                result.scenario_cost_1
+                if result.winning_scenario == "cost_1"
+                else result.scenario_cost_5plus
+            )
+            if col_key == "profit":
+                return profit_color(float(winning.profit_net))
+            if col_key == "margin":
+                return margin_color(float(winning.margin_net))
+
+        if role == Qt.ItemDataRole.ToolTipRole:
+            tooltip = COLUMN_TOOLTIPS.get(col_key, "")
+            if col_key == "flags" and result.flags:
+                flag_details = "\n".join(f"• {f.code}: {f.description}" for f in result.flags)
+                tooltip = f"{tooltip}\n\n{flag_details}" if tooltip else flag_details
+            return tooltip if tooltip else None
 
         if role == Qt.ItemDataRole.TextAlignmentRole:
             if col_key in ("score", "trend", "cost_1", "cost_5plus", "sell_gross", "profit", "margin", "sales", "offers"):
@@ -208,9 +279,26 @@ class BrandTab(QWidget):
         self.score_filter.currentTextChanged.connect(self._on_score_filter_changed)
         toolbar.addWidget(self.score_filter)
 
+        # Quick filters
+        self.filter_restricted = QCheckBox("Hide Restricted")
+        self.filter_restricted.stateChanged.connect(self._apply_filters)
+        toolbar.addWidget(self.filter_restricted)
+
+        self.filter_amazon = QCheckBox("Hide Amazon")
+        self.filter_amazon.stateChanged.connect(self._apply_filters)
+        toolbar.addWidget(self.filter_amazon)
+
         # Count label
         self.count_label = QLabel("0 items")
         toolbar.addWidget(self.count_label)
+
+        # Column visibility button
+        columns_btn = QToolButton()
+        columns_btn.setText("Columns ▾")
+        columns_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.columns_menu = QMenu(columns_btn)
+        columns_btn.setMenu(self.columns_menu)
+        toolbar.addWidget(columns_btn)
 
         # Export button
         export_btn = QPushButton("Export")
@@ -260,13 +348,70 @@ class BrandTab(QWidget):
         # Set row height for score rings
         self.table.verticalHeader().setDefaultSectionSize(55)
 
-        # Connect double-click
+        # Connect double-click and context menu
         self.table.doubleClicked.connect(self._on_row_double_clicked)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_context_menu)
 
         layout.addWidget(self.table)
 
+        # Empty state label (hidden by default)
+        self.empty_label = QLabel("No items to display.\n\nImport a supplier CSV to get started.")
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setStyleSheet("color: #6c757d; font-size: 14px; padding: 40px;")
+        self.empty_label.setVisible(False)
+        layout.addWidget(self.empty_label)
+
+        # Setup column visibility menu
+        self._setup_column_menu()
+
         # Sort by score descending by default
         self.table.sortByColumn(0, Qt.SortOrder.DescendingOrder)
+
+    def _setup_column_menu(self) -> None:
+        """Setup the column visibility menu."""
+        self.column_actions: dict[int, QAction] = {}
+
+        for i, (name, key) in enumerate(ScoreTableModel.COLUMNS):
+            action = QAction(name, self)
+            action.setCheckable(True)
+            action.setChecked(True)
+            action.setData(i)
+            action.triggered.connect(self._on_column_toggle)
+            self.columns_menu.addAction(action)
+            self.column_actions[i] = action
+
+        # Hide some columns by default
+        default_hidden = {"cost_5plus", "scenario", "updated"}
+        for i, (name, key) in enumerate(ScoreTableModel.COLUMNS):
+            if key in default_hidden:
+                self.table.setColumnHidden(i, True)
+                self.column_actions[i].setChecked(False)
+
+    def _on_column_toggle(self) -> None:
+        """Handle column visibility toggle."""
+        action = self.sender()
+        if action:
+            col_index = action.data()
+            self.table.setColumnHidden(col_index, not action.isChecked())
+
+    def _on_context_menu(self, pos) -> None:
+        """Show context menu for table row."""
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+
+        source_index = self.proxy_model.mapToSource(index)
+        result = self.model.get_result(source_index.row())
+        if result:
+            menu = TableContextMenu(result, self)
+            menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _apply_filters(self) -> None:
+        """Apply all active filters."""
+        # This is a simplified filter - for production, use a custom QSortFilterProxyModel
+        # that checks multiple conditions
+        self._on_filter_changed(self.filter_input.text())
 
     def update_results(
         self,
@@ -277,6 +422,11 @@ class BrandTab(QWidget):
         """Update the table with new results."""
         self.model.set_results(results, titles, profit_history)
         self.count_label.setText(f"{len(results)} items")
+
+        # Show/hide empty state
+        has_data = len(results) > 0
+        self.table.setVisible(has_data)
+        self.empty_label.setVisible(not has_data)
 
     def _on_filter_changed(self, text: str) -> None:
         """Handle filter text change."""
