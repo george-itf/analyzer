@@ -300,6 +300,17 @@ class SettingsTab(QWidget):
 
         content_layout.addWidget(refresh_group)
 
+        # Appearance settings
+        appearance_group = QGroupBox("Appearance")
+        appearance_layout = QFormLayout(appearance_group)
+
+        self.dark_mode = QCheckBox("Dark Mode")
+        self.dark_mode.setChecked(self._settings.dark_mode)
+        self.dark_mode.setToolTip("Toggle dark mode (requires restart)")
+        appearance_layout.addRow(self.dark_mode)
+
+        content_layout.addWidget(appearance_group)
+
         # Mock mode
         mock_group = QGroupBox("Development")
         mock_layout = QFormLayout(mock_group)
@@ -361,6 +372,9 @@ class SettingsTab(QWidget):
 
         # Update mock mode
         settings.api.mock_mode = self.mock_mode.isChecked()
+
+        # Update appearance
+        settings.dark_mode = self.dark_mode.isChecked()
 
         # Update brand settings
         for brand_name, widget in self.brand_widgets.items():
@@ -424,6 +438,9 @@ class SettingsTab(QWidget):
 
         # Mock mode
         self.mock_mode.setChecked(self._settings.api.mock_mode)
+
+        # Appearance
+        self.dark_mode.setChecked(self._settings.dark_mode)
 
         # Brand settings - need to rebuild the widgets
         for brand_name, widget in self.brand_widgets.items():

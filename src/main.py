@@ -56,81 +56,9 @@ def main() -> int:
     app.setApplicationName("Seller Opportunity Scanner")
     app.setOrganizationName("SellerTools")
 
-    # Set application-wide stylesheet
-    app.setStyleSheet("""
-        QMainWindow {
-            background-color: #f5f5f5;
-        }
-        QTabWidget::pane {
-            border: 1px solid #ccc;
-            background-color: white;
-        }
-        QTabBar::tab {
-            background-color: #e0e0e0;
-            border: 1px solid #ccc;
-            padding: 8px 16px;
-            margin-right: 2px;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
-        }
-        QTabBar::tab:selected {
-            background-color: white;
-            border-bottom-color: white;
-        }
-        QTabBar::tab:hover {
-            background-color: #d0d0d0;
-        }
-        QTableView {
-            gridline-color: #e0e0e0;
-            selection-background-color: #cce5ff;
-            selection-color: #000000;
-        }
-        QTableView::item {
-            padding: 4px;
-        }
-        QHeaderView::section {
-            background-color: #f0f0f0;
-            padding: 6px;
-            border: 1px solid #ddd;
-            font-weight: bold;
-        }
-        QPushButton {
-            background-color: #0d6efd;
-            color: white;
-            border: none;
-            padding: 6px 16px;
-            border-radius: 4px;
-        }
-        QPushButton:hover {
-            background-color: #0b5ed7;
-        }
-        QPushButton:pressed {
-            background-color: #0a58ca;
-        }
-        QPushButton:disabled {
-            background-color: #6c757d;
-        }
-        QPushButton:checked {
-            background-color: #dc3545;
-        }
-        QGroupBox {
-            font-weight: bold;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-top: 8px;
-            padding-top: 16px;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 4px;
-        }
-        QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
-            padding: 4px 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-    """)
+    # Set application-wide stylesheet based on theme preference
+    from src.gui.themes import get_theme_stylesheet
+    app.setStyleSheet(get_theme_stylesheet(settings.dark_mode))
 
     # Create and show main window
     from src.gui.main_window import MainWindow

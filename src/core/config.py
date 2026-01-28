@@ -169,6 +169,7 @@ class Settings(BaseSettings):
     # UI settings
     log_level: str = "INFO"
     debug_mode: bool = False
+    dark_mode: bool = False
 
     def get_brand_settings(self, brand: str) -> BrandSettings:
         """Get settings for a specific brand."""
