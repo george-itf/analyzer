@@ -22,4 +22,4 @@
 - [x] Dark mode
 - [x] Keyboard shortcuts
 - [x] Tray icon
-- [ ] Auto-update
+- [x] Auto-update - GitHub releases integration
