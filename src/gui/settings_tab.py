@@ -158,6 +158,28 @@ class BrandSettingsWidget(QWidget):
         layout.addWidget(penalties_group)
         layout.addStretch()
 
+    def _refresh_ui(self) -> None:
+        """Refresh UI widgets from current settings."""
+        self.min_sales.setValue(self._settings.min_sales_proxy_30d)
+        self.min_margin.setValue(float(self._settings.min_margin_ex_vat))
+        self.min_profit.setValue(float(self._settings.min_profit_ex_vat_gbp))
+        self.safe_buffer.setValue(float(self._settings.safe_price_buffer_pct))
+
+        self.w_velocity.setValue(float(self._settings.weights.velocity))
+        self.w_profit.setValue(float(self._settings.weights.profit))
+        self.w_margin.setValue(float(self._settings.weights.margin))
+        self.w_stability.setValue(float(self._settings.weights.stability))
+        self.w_viability.setValue(float(self._settings.weights.viability))
+
+        self.p_restricted.setValue(float(self._settings.penalties.restricted))
+        self.p_amazon.setValue(float(self._settings.penalties.amazon_retail_present))
+        self.p_weight_unknown.setValue(float(self._settings.penalties.weight_unknown))
+        self.p_low_confidence.setValue(float(self._settings.penalties.low_mapping_confidence))
+        self.p_high_offers.setValue(float(self._settings.penalties.high_offer_count))
+        self.p_below_sales.setValue(float(self._settings.penalties.below_min_sales))
+        self.p_below_margin.setValue(float(self._settings.penalties.below_min_margin))
+        self.p_below_profit.setValue(float(self._settings.penalties.below_min_profit))
+
     def get_settings(self) -> BrandSettings:
         """Get the current settings from the UI."""
         from src.core.config import ScoringPenalties, ScoringWeights
@@ -377,8 +399,39 @@ class SettingsTab(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             settings = Settings()
             settings.save()
-            reload_settings()
-            # Rebuild UI with defaults
-            # For simplicity, just reload the values
-            self._settings = get_settings()
+            self._settings = reload_settings()
+            self._refresh_ui_from_settings()
             self.settings_changed.emit()
+            QMessageBox.information(self, "Reset Complete", "Settings have been reset to defaults.")
+
+    def _refresh_ui_from_settings(self) -> None:
+        """Refresh all UI widgets from current settings."""
+        # Global settings
+        self.vat_rate.setValue(float(self._settings.vat_rate))
+
+        # Shipping settings
+        self.ship_small_max.setValue(float(self._settings.shipping.tier_small.max_weight_kg))
+        self.ship_small_cost.setValue(float(self._settings.shipping.tier_small.cost_gbp))
+        self.ship_medium_max.setValue(float(self._settings.shipping.tier_medium_max_kg))
+        self.ship_medium_cost.setValue(float(self._settings.shipping.tier_medium_cost_gbp))
+
+        # Refresh settings
+        self.refresh_enabled.setChecked(self._settings.refresh.continuous_enabled)
+        self.pass1_interval.setValue(self._settings.refresh.pass1_interval_seconds)
+        self.pass2_interval.setValue(self._settings.refresh.pass2_interval_seconds)
+        self.shortlist_size.setValue(self._settings.refresh.pass2_shortlist_size)
+        self.spapi_ttl.setValue(self._settings.refresh.spapi_cache_ttl_minutes)
+
+        # Mock mode
+        self.mock_mode.setChecked(self._settings.api.mock_mode)
+
+        # Brand settings - need to rebuild the widgets
+        for brand_name, widget in self.brand_widgets.items():
+            brand_settings = self._settings.get_brand_settings(brand_name)
+            widget._settings = brand_settings
+            widget._refresh_ui()
+
+    def refresh_data(self) -> None:
+        """Public method to refresh settings tab from disk."""
+        self._settings = reload_settings()
+        self._refresh_ui_from_settings()
