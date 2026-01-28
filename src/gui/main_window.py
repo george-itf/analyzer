@@ -6,7 +6,7 @@ import logging
 from decimal import Decimal
 
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QAction, QFont
+from PyQt6.QtGui import QAction, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -50,6 +50,7 @@ class MainWindow(QMainWindow):
         self.resize(1400, 900)
 
         self._build_ui()
+        self._setup_shortcuts()
         self._connect_signals()
         self._load_initial_data()
 
@@ -125,6 +126,57 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
+
+    def _setup_shortcuts(self) -> None:
+        """Setup keyboard shortcuts."""
+        # Tab navigation: Ctrl+1 through Ctrl+9
+        for i in range(min(9, self.tabs.count())):
+            shortcut = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
+            shortcut.activated.connect(lambda idx=i: self.tabs.setCurrentIndex(idx))
+
+        # Refresh data: F5 or Ctrl+R
+        refresh_shortcut = QShortcut(QKeySequence("F5"), self)
+        refresh_shortcut.activated.connect(self._refresh_all)
+        refresh_shortcut2 = QShortcut(QKeySequence("Ctrl+R"), self)
+        refresh_shortcut2.activated.connect(self._refresh_all)
+
+        # Toggle refresh: Ctrl+Shift+R
+        toggle_refresh = QShortcut(QKeySequence("Ctrl+Shift+R"), self)
+        toggle_refresh.activated.connect(self.refresh_btn.click)
+
+        # Export current tab: Ctrl+E
+        export_shortcut = QShortcut(QKeySequence("Ctrl+E"), self)
+        export_shortcut.activated.connect(self._export_current_tab)
+
+        # Search focus: Ctrl+F
+        search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        search_shortcut.activated.connect(self._focus_search)
+
+    def _refresh_all(self) -> None:
+        """Refresh all data."""
+        for brand in Brand:
+            self._refresh_brand_tab(brand)
+        self.mappings_tab.refresh_data()
+        self.dashboard_tab.refresh_data()
+        self.status_bar.showMessage("Data refreshed", 3000)
+
+    def _export_current_tab(self) -> None:
+        """Export data from current brand tab if applicable."""
+        current = self.tabs.currentWidget()
+        for brand_name, tab in self.brand_tabs.items():
+            if current == tab:
+                tab._on_export()
+                return
+        self.status_bar.showMessage("Export not available for this tab", 3000)
+
+    def _focus_search(self) -> None:
+        """Focus the search/filter input in current brand tab."""
+        current = self.tabs.currentWidget()
+        for brand_name, tab in self.brand_tabs.items():
+            if current == tab and hasattr(tab, 'filter_input'):
+                tab.filter_input.setFocus()
+                tab.filter_input.selectAll()
+                return
 
     def _connect_signals(self) -> None:
         """Connect signals between components."""
