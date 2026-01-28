@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 # Try to load fixtures from file
 FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures"
@@ -59,7 +58,7 @@ def _generate_mock_keepa_product(asin: str, seed: int = 0) -> dict:
     price_variation = int(base_price * 0.1)
 
     # Generate price history (timestamps and values interleaved)
-    now_keepa = int((datetime.now(timezone.utc).timestamp() + 21564000 * 60) / 60)
+    now_keepa = int((datetime.now(UTC).timestamp() + 21564000 * 60) / 60)
     prices = []
     for i in range(30):
         timestamp = now_keepa - (30 - i) * 1440  # Daily

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING

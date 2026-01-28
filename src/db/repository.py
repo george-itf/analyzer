@@ -22,9 +22,8 @@ from src.core.models import (
 )
 
 from .models import (
-    AsinCandidateDB,
     ApiLogDB,
-    BrandSettingsDB,
+    AsinCandidateDB,
     GlobalSettingsDB,
     KeepaSnapshotDB,
     ScoreHistoryDB,

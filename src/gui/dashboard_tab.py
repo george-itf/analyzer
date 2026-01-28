@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
-from typing import Any
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -15,12 +13,11 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from src.core.models import Brand, ScoreResult
+from src.core.models import Brand
 from src.db.repository import Repository
 
 from .charts import BarChartWidget, DonutChartWidget, ScoreDistributionWidget

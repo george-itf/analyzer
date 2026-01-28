@@ -1,15 +1,15 @@
 """Database layer for Seller Opportunity Scanner."""
 
 from .models import (
-    Base,
-    SupplierItemDB,
+    ApiLogDB,
     AsinCandidateDB,
-    KeepaSnapshotDB,
-    SpApiSnapshotDB,
-    ScoreHistoryDB,
+    Base,
     BrandSettingsDB,
     GlobalSettingsDB,
-    ApiLogDB,
+    KeepaSnapshotDB,
+    ScoreHistoryDB,
+    SpApiSnapshotDB,
+    SupplierItemDB,
 )
 from .repository import Repository
 from .session import get_engine, get_session, init_database

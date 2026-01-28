@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -212,7 +210,7 @@ class Settings(BaseSettings):
         return obj
 
     @classmethod
-    def load(cls) -> "Settings":
+    def load(cls) -> Settings:
         """Load settings from the config file or create defaults."""
         config_path = get_config_dir() / "settings.json"
         env_path = get_config_dir() / ".env"

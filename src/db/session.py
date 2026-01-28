@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator
 
 from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
@@ -80,7 +80,7 @@ def init_database(use_migrations: bool = True) -> None:
         use_migrations: If True, use Alembic migrations. If False, use create_all().
     """
     engine = get_engine()
-    
+
     if use_migrations:
         _run_migrations(engine)
     else:
@@ -94,38 +94,38 @@ def _run_migrations(engine: Engine) -> None:
     from alembic.config import Config
     from alembic.runtime.migration import MigrationContext
     from alembic.script import ScriptDirectory
-    
+
     # Find the alembic.ini file
     # Look relative to the package location
     import src
     package_dir = Path(src.__file__).parent.parent
     alembic_ini = package_dir / "alembic.ini"
     migrations_dir = package_dir / "migrations"
-    
+
     if not alembic_ini.exists():
         logger.warning(f"alembic.ini not found at {alembic_ini}, falling back to create_all()")
         Base.metadata.create_all(engine)
         return
-    
+
     # Create Alembic config
     alembic_cfg = Config(str(alembic_ini))
     alembic_cfg.set_main_option("script_location", str(migrations_dir))
     alembic_cfg.set_main_option("sqlalchemy.url", str(engine.url))
-    
+
     # Check current migration state
     with engine.connect() as connection:
         context = MigrationContext.configure(connection)
         current_rev = context.get_current_revision()
-    
+
     # Get the head revision
     script = ScriptDirectory.from_config(alembic_cfg)
     head_rev = script.get_current_head()
-    
+
     if current_rev is None:
         # Fresh database - check if tables exist
         inspector = inspect(engine)
         tables = inspector.get_table_names()
-        
+
         if tables and "alembic_version" not in tables:
             # Tables exist but no alembic_version - stamp the database
             logger.info("Existing database detected, stamping with current migration version")

@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
-import traceback
-from pathlib import Path
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from src.core.config import get_config_dir, get_settings
@@ -34,7 +31,6 @@ def setup_exception_handler() -> None:
         # Show error dialog if QApplication exists
         app = QApplication.instance()
         if app:
-            error_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
             QMessageBox.critical(
                 None,
                 "Unexpected Error",

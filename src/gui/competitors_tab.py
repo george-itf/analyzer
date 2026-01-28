@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
@@ -11,7 +10,6 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QTableView,
     QVBoxLayout,

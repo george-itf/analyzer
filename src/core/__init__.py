@@ -1,19 +1,19 @@
 """Core business logic for Seller Opportunity Scanner."""
 
-from .config import Settings, BrandSettings, get_settings
+from .config import BrandSettings, Settings, get_settings
+from .csv_importer import CsvImporter, CsvValidationError
 from .models import (
-    Brand,
-    SupplierItem,
     AsinCandidate,
-    KeepaSnapshot,
-    SpApiSnapshot,
-    ScoreHistory,
+    Brand,
     CandidateSource,
-    ScoreResult,
+    KeepaSnapshot,
     ProfitScenario,
+    ScoreHistory,
+    ScoreResult,
+    SpApiSnapshot,
+    SupplierItem,
 )
 from .scoring import ScoringEngine
-from .csv_importer import CsvImporter, CsvValidationError
 from .shipping import ShippingCalculator, ShippingTier
 
 __all__ = [

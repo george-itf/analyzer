@@ -5,8 +5,8 @@ from __future__ import annotations
 import webbrowser
 from typing import TYPE_CHECKING
 
-from PyQt6.QtGui import QAction, QClipboard
-from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QWidget
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QApplication, QMenu, QWidget
 
 if TYPE_CHECKING:
     from src.core.models import ScoreResult

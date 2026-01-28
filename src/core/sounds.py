@@ -7,7 +7,6 @@ import platform
 import subprocess
 from enum import Enum
 from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 

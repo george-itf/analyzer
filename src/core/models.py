@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
 
 
 class Brand(str, Enum):
@@ -17,7 +16,7 @@ class Brand(str, Enum):
     TIMCO = "Timco"
 
     @classmethod
-    def from_string(cls, value: str) -> "Brand":
+    def from_string(cls, value: str) -> Brand:
         """Convert string to Brand enum."""
         value_lower = value.lower()
         for brand in cls:

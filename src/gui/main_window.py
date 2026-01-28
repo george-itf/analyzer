@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
 
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QAction, QFont, QKeySequence, QShortcut
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -21,13 +19,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtGui import QIcon
 
 from src.core.config import Settings, get_settings
 from src.core.models import Alert, Brand, ScoreResult
 from src.core.scheduler import RefreshController
 from src.core.sounds import SoundEffect, get_sound_player
-from src.core.updater import Updater, UpdateInfo, get_current_version
+from src.core.updater import UpdateInfo, Updater, get_current_version
 from src.db.repository import Repository
 from src.web.server import WebServer
 

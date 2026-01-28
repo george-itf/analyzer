@@ -6,7 +6,6 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +201,7 @@ class CompetitorTracker:
         Keepa offers are in the 'offers' array with seller info.
         """
         offers = []
-        
+
         for offer_data in keepa_data.get("offers", []):
             try:
                 offer = CompetitorOffer(

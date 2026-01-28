@@ -5,18 +5,16 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 import requests
 
 from src.core.config import Settings
 from src.core.models import AsinCandidate, SpApiSnapshot
-
 
 # UK Marketplace ID
 UK_MARKETPLACE_ID = "A1F83G8C2ARO7P"
@@ -41,7 +39,7 @@ class SpApiAuth:
         if not self.access_token or not self.expires_at:
             return False
         # Add 5 minute buffer
-        return datetime.now(timezone.utc) < self.expires_at
+        return datetime.now(UTC) < self.expires_at
 
 
 class SpApiClient:
@@ -77,8 +75,8 @@ class SpApiClient:
 
         if self.mock_mode:
             self._auth.access_token = "mock_access_token"
-            self._auth.expires_at = datetime.now(timezone.utc).replace(
-                hour=datetime.now(timezone.utc).hour + 1
+            self._auth.expires_at = datetime.now(UTC).replace(
+                hour=datetime.now(UTC).hour + 1
             )
             return self._auth.access_token
 
@@ -98,8 +96,8 @@ class SpApiClient:
         self._auth.token_type = token_data.get("token_type", "bearer")
 
         expires_in = token_data.get("expires_in", 3600)
-        self._auth.expires_at = datetime.now(timezone.utc).replace(
-            second=datetime.now(timezone.utc).second + expires_in
+        self._auth.expires_at = datetime.now(UTC).replace(
+            second=datetime.now(UTC).second + expires_in
         )
 
         return self._auth.access_token
@@ -121,7 +119,7 @@ class SpApiClient:
         canonical_querystring = parsed.query
 
         # Current time
-        t = datetime.now(timezone.utc)
+        t = datetime.now(UTC)
         amz_date = t.strftime("%Y%m%dT%H%M%SZ")
         date_stamp = t.strftime("%Y%m%d")
 
@@ -161,7 +159,7 @@ class SpApiClient:
         def sign(key: bytes, msg: str) -> bytes:
             return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
 
-        k_date = sign(f"AWS4{self.aws_secret_key}".encode("utf-8"), date_stamp)
+        k_date = sign(f"AWS4{self.aws_secret_key}".encode(), date_stamp)
         k_region = sign(k_date, self.region)
         k_service = sign(k_region, self.service)
         k_signing = sign(k_service, "aws4_request")
@@ -311,7 +309,7 @@ class SpApiClient:
         is_fba: bool = False,
     ) -> dict:
         """Get fee estimate for an ASIN at a given price."""
-        path = "/products/fees/v0/items/{}/feesEstimate".format(asin)
+        path = f"/products/fees/v0/items/{asin}/feesEstimate"
 
         body = {
             "FeesEstimateRequest": {
@@ -397,7 +395,7 @@ class SpApiClient:
                         # Store error result too
                         all_results[asin] = {"error": result.get("Error", {}).get("Message", "Unknown error")}
 
-            except Exception as e:
+            except Exception:
                 # On error, fall back to individual requests for this batch
                 for asin, price in batch:
                     if asin not in all_results:

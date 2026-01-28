@@ -15,7 +15,6 @@ import requests
 from src.core.config import Settings
 from src.core.models import KeepaSnapshot, TokenStatus
 
-
 # Keepa domain codes
 KEEPA_DOMAIN_UK = 2  # amazon.co.uk
 
@@ -388,7 +387,7 @@ class KeepaClient:
             try:
                 snapshot = self.parse_product_to_snapshot(product)
                 snapshots.append(snapshot)
-            except Exception as e:
+            except Exception:
                 # Log but continue with other products
                 continue
 

@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import BinaryIO, TextIO
 
 from .models import Brand, ImportResult, SupplierItem
 

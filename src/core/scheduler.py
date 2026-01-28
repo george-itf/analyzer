@@ -7,22 +7,18 @@ import time
 from collections import deque
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any
 
-from PyQt6.QtCore import QMutex, QObject, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QMutex, QObject, QThread, pyqtSignal
 
 from src.api.keepa import KeepaClient, KeepaRateLimitError
-from src.api.spapi import SpApiClient, SpApiRateLimitError
+from src.api.spapi import SpApiClient
 from src.core.alerts import AlertManager
-from src.core.config import Settings, get_settings
+from src.core.config import Settings
 from src.core.models import (
     AsinCandidate,
-    Brand,
     KeepaSnapshot,
     ScoreResult,
     SpApiSnapshot,
-    SupplierItem,
-    TokenStatus,
 )
 from src.core.scoring import ScoringEngine
 from src.db.repository import Repository

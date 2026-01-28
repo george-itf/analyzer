@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -57,7 +55,7 @@ class SupplierItemDB(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # Relationships
-    candidates: Mapped[list["AsinCandidateDB"]] = relationship(
+    candidates: Mapped[list[AsinCandidateDB]] = relationship(
         "AsinCandidateDB", back_populates="supplier_item", cascade="all, delete-orphan"
     )
 
@@ -95,14 +93,14 @@ class AsinCandidateDB(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # Relationships
-    supplier_item: Mapped["SupplierItemDB"] = relationship("SupplierItemDB", back_populates="candidates")
-    keepa_snapshots: Mapped[list["KeepaSnapshotDB"]] = relationship(
+    supplier_item: Mapped[SupplierItemDB] = relationship("SupplierItemDB", back_populates="candidates")
+    keepa_snapshots: Mapped[list[KeepaSnapshotDB]] = relationship(
         "KeepaSnapshotDB", back_populates="candidate", cascade="all, delete-orphan"
     )
-    spapi_snapshots: Mapped[list["SpApiSnapshotDB"]] = relationship(
+    spapi_snapshots: Mapped[list[SpApiSnapshotDB]] = relationship(
         "SpApiSnapshotDB", back_populates="candidate", cascade="all, delete-orphan"
     )
-    score_history: Mapped[list["ScoreHistoryDB"]] = relationship(
+    score_history: Mapped[list[ScoreHistoryDB]] = relationship(
         "ScoreHistoryDB", back_populates="candidate", cascade="all, delete-orphan"
     )
 
@@ -125,31 +123,31 @@ class KeepaSnapshotDB(Base):
     snapshot_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
 
     # FBM pricing
-    fbm_price_current: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    fbm_price_median_30d: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    fbm_price_mean_30d: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    fbm_price_min_30d: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    fbm_price_max_30d: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    fbm_price_current: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    fbm_price_median_30d: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    fbm_price_mean_30d: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    fbm_price_min_30d: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    fbm_price_max_30d: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
     # Sales velocity
-    sales_rank_drops_30d: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    sales_rank_current: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sales_rank_drops_30d: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sales_rank_current: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Offers
-    offer_count_fbm: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    offer_count_fba: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    offer_count_fbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    offer_count_fba: Mapped[int | None] = mapped_column(Integer, nullable=True)
     offer_count_trend: Mapped[str] = mapped_column(String(20), default="")
 
     # Buy box
-    buy_box_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    buy_box_is_fba: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    buy_box_is_amazon: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    buy_box_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    buy_box_is_fba: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    buy_box_is_amazon: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # Amazon presence
     amazon_on_listing: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Price volatility
-    price_volatility_cv: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 4), nullable=True)
+    price_volatility_cv: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
 
     # Token info
     tokens_consumed: Mapped[int] = mapped_column(Integer, default=0)
@@ -160,7 +158,7 @@ class KeepaSnapshotDB(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     # Relationships
-    candidate: Mapped["AsinCandidateDB"] = relationship("AsinCandidateDB", back_populates="keepa_snapshots")
+    candidate: Mapped[AsinCandidateDB] = relationship("AsinCandidateDB", back_populates="keepa_snapshots")
 
     __table_args__ = (Index("ix_keepa_snapshots_asin_time", "asin", "snapshot_time"),)
 
@@ -183,13 +181,13 @@ class SpApiSnapshotDB(Base):
     restriction_reasons: Mapped[str] = mapped_column(Text, default="")
 
     # Fees
-    fee_total_gross: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
-    fee_referral: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
-    fee_fba: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
-    fee_variable_closing: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True)
+    fee_total_gross: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    fee_referral: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    fee_fba: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    fee_variable_closing: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
 
     # Weight
-    weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     weight_source: Mapped[str] = mapped_column(String(50), default="")
 
     # Catalog info
@@ -203,7 +201,7 @@ class SpApiSnapshotDB(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     # Relationships
-    candidate: Mapped["AsinCandidateDB"] = relationship("AsinCandidateDB", back_populates="spapi_snapshots")
+    candidate: Mapped[AsinCandidateDB] = relationship("AsinCandidateDB", back_populates="spapi_snapshots")
 
     __table_args__ = (Index("ix_spapi_snapshots_asin_time", "asin", "snapshot_time"),)
 
@@ -223,20 +221,20 @@ class ScoreHistoryDB(Base):
     winning_scenario: Mapped[str] = mapped_column(String(20), default="")
     profit_net: Mapped[Decimal] = mapped_column(Numeric(10, 4), default=Decimal("0"))
     margin_net: Mapped[Decimal] = mapped_column(Numeric(6, 4), default=Decimal("0"))
-    sales_proxy_30d: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sales_proxy_30d: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Score breakdown JSON
     breakdown_json: Mapped[str] = mapped_column(Text, default="")
     flags_json: Mapped[str] = mapped_column(Text, default="")
 
     # Snapshot references
-    keepa_snapshot_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    spapi_snapshot_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    keepa_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    spapi_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     calculated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
 
     # Relationships
-    candidate: Mapped["AsinCandidateDB"] = relationship("AsinCandidateDB", back_populates="score_history")
+    candidate: Mapped[AsinCandidateDB] = relationship("AsinCandidateDB", back_populates="score_history")
 
     __table_args__ = (Index("ix_score_history_candidate_time", "candidate_id", "calculated_at"),)
 
@@ -253,7 +251,7 @@ class BrandSettingsDB(Base):
     min_margin_ex_vat: Mapped[Decimal] = mapped_column(Numeric(6, 4), default=Decimal("0.10"))
     min_profit_ex_vat_gbp: Mapped[Decimal] = mapped_column(Numeric(10, 4), default=Decimal("5.00"))
     safe_price_buffer_pct: Mapped[Decimal] = mapped_column(Numeric(6, 4), default=Decimal("0.03"))
-    vat_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 4), nullable=True)
+    vat_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
 
     # Weights JSON
     weights_json: Mapped[str] = mapped_column(Text, default="{}")

@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-from typing import Any
-
 from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
-from PyQt6.QtWidgets import QFrame, QSizePolicy, QVBoxLayout, QWidget, QLabel
+from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtWidgets import QFrame, QSizePolicy, QWidget
 
 
 class BarChartWidget(QFrame):
