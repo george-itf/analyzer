@@ -265,6 +265,28 @@ class Repository:
             result = session.execute(query).scalars().all()
             return [self._db_to_asin_candidate(db) for db in result]
 
+    def get_candidates_by_batch(self, batch_id: str, active_only: bool = True) -> list[AsinCandidate]:
+        """Get all ASIN candidates for items in a specific import batch."""
+        with session_scope() as session:
+            # First get supplier item IDs for the batch
+            item_query = select(SupplierItemDB.id).where(
+                SupplierItemDB.import_batch_id == batch_id
+            )
+            item_ids = session.execute(item_query).scalars().all()
+
+            if not item_ids:
+                return []
+
+            # Get candidates for those items
+            query = select(AsinCandidateDB).where(
+                AsinCandidateDB.supplier_item_id.in_(item_ids)
+            )
+            if active_only:
+                query = query.where(AsinCandidateDB.is_active == True)
+
+            result = session.execute(query).scalars().all()
+            return [self._db_to_asin_candidate(db) for db in result]
+
     def get_candidate_by_asin(
         self, supplier_item_id: int, asin: str
     ) -> AsinCandidate | None:

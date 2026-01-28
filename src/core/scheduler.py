@@ -50,6 +50,7 @@ class RefreshWorker(QObject):
         self._running = False
         self._paused = False
         self._mutex = QMutex()
+        self._priority_queue: deque[str] = deque()  # ASINs to refresh immediately
 
     def start_refresh(self) -> None:
         """Start the refresh loop."""
@@ -69,6 +70,105 @@ class RefreshWorker(QObject):
         """Resume the refresh loop."""
         self._paused = False
 
+    def queue_priority_refresh(self, asins: list[str]) -> None:
+        """Add ASINs to the priority queue for immediate refresh."""
+        self._mutex.lock()
+        try:
+            for asin in asins:
+                if asin not in self._priority_queue:
+                    self._priority_queue.append(asin)
+            self.log_message.emit(f"Queued {len(asins)} ASINs for priority refresh")
+        finally:
+            self._mutex.unlock()
+
+    def _process_priority_queue(self) -> bool:
+        """Process priority queue items. Returns True if items were processed."""
+        self._mutex.lock()
+        try:
+            if not self._priority_queue:
+                return False
+            # Get up to 20 ASINs from priority queue
+            batch = []
+            while self._priority_queue and len(batch) < 20:
+                batch.append(self._priority_queue.popleft())
+        finally:
+            self._mutex.unlock()
+
+        if not batch:
+            return False
+
+        self.log_message.emit(f"Priority refresh: Processing {len(batch)} ASINs...")
+
+        # Get candidates for these ASINs
+        candidates = self.repo.get_all_active_candidates()
+        asin_to_candidates: dict[str, list[AsinCandidate]] = {}
+        for c in candidates:
+            if c.asin in batch:
+                asin_to_candidates.setdefault(c.asin, []).append(c)
+
+        if not asin_to_candidates:
+            return True
+
+        try:
+            # Check token availability
+            wait_time = self.keepa.wait_for_tokens(len(batch))
+            if wait_time > 0:
+                self.log_message.emit(f"Priority refresh: Waiting {wait_time:.0f}s for tokens...")
+                time.sleep(min(wait_time, 30))
+
+            snapshots, response = self.keepa.fetch_and_parse(
+                list(asin_to_candidates.keys()), days=90, include_buy_box=False
+            )
+
+            ts = response.token_status
+            self.token_status_updated.emit(ts.tokens_left, ts.refill_rate, ts.refill_in_seconds)
+
+            # Build a map of ASIN -> product for title extraction
+            asin_to_product: dict[str, dict] = {}
+            for product in response.products:
+                asin_to_product[product.get("asin", "")] = product
+
+            success_count = 0
+            for snapshot in snapshots:
+                asin = snapshot.asin
+                candidates_for_asin = asin_to_candidates.get(asin, [])
+
+                product = asin_to_product.get(asin, {})
+                keepa_title = KeepaClient.get_product_title(product)
+                keepa_brand = KeepaClient.get_product_brand(product)
+
+                for candidate in candidates_for_asin:
+                    if candidate.id:
+                        if keepa_title and not candidate.title:
+                            self.repo.update_candidate_title(
+                                candidate.id,
+                                title=keepa_title,
+                                amazon_brand=keepa_brand if keepa_brand else None,
+                            )
+
+                        self.repo.save_keepa_snapshot(candidate.id, snapshot)
+                        spapi_snapshot = self._get_spapi_data(candidate, snapshot)
+
+                        item = self.repo.get_supplier_item_by_id(candidate.supplier_item_id)
+                        if item:
+                            result = self.scoring.calculate(item, candidate, snapshot, spapi_snapshot)
+                            self.repo.save_score_history(candidate.id, result)
+                            self.score_updated.emit(
+                                candidate.brand.value,
+                                candidate.asin,
+                                result.score,
+                            )
+                            success_count += 1
+
+            self.batch_completed.emit("priority", success_count, 0)
+            self.log_message.emit(f"Priority refresh: Completed {success_count} items")
+
+        except Exception as e:
+            logger.exception("Priority refresh error")
+            self.error_occurred.emit(f"Priority refresh error: {e}")
+
+        return True
+
     def _run_loop(self) -> None:
         """Main refresh loop."""
         pass1_counter = 0
@@ -82,6 +182,10 @@ class RefreshWorker(QObject):
                 continue
 
             try:
+                # Priority queue takes precedence - process immediately
+                if self._process_priority_queue():
+                    continue  # Check again for more priority items
+
                 # Pass 1: Continuous wide scan
                 if pass1_counter <= 0:
                     self._run_pass1()
@@ -425,3 +529,8 @@ class RefreshController(QObject):
         else:
             self.start()
         return self._is_running
+
+    def queue_priority_refresh(self, asins: list[str]) -> None:
+        """Add ASINs to the priority queue for immediate refresh."""
+        if self._worker:
+            self._worker.queue_priority_refresh(asins)

@@ -245,6 +245,17 @@ class MainWindow(QMainWindow):
             self._refresh_brand_tab(brand)
         self.mappings_tab.refresh_data()
 
+        # If refresh is running, queue priority refresh for newly imported items
+        if self._refresh_controller and self._refresh_controller.is_running:
+            # Get ASINs from the import batch
+            candidates = self._repo.get_candidates_by_batch(batch_id)
+            asins = list({c.asin for c in candidates if c.asin})
+            if asins:
+                self._refresh_controller.queue_priority_refresh(asins)
+                self.status_bar.showMessage(
+                    f"Import completed: {batch_id}. Queued {len(asins)} ASINs for immediate refresh."
+                )
+
     def _on_mapping_updated(self) -> None:
         """Handle mapping update."""
         for brand in Brand:
