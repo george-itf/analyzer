@@ -542,10 +542,14 @@ class BrandTab(QWidget):
             "Excel Files (*.xlsx);;CSV Files (*.csv)",
         )
         if file_path:
-            if file_path.endswith(".csv"):
-                Exporter.export_to_csv(selected, file_path)
-            else:
-                Exporter.export_to_xlsx(selected, file_path)
+            try:
+                if file_path.endswith(".csv"):
+                    Exporter.export_to_csv(selected, file_path)
+                else:
+                    Exporter.export_to_xlsx(selected, file_path)
+                QMessageBox.information(self, "Export Complete", f"Exported {len(selected)} items to:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Failed", f"Failed to export data:\n{e}")
 
     def update_results(
         self,
@@ -601,7 +605,11 @@ class BrandTab(QWidget):
             "Excel Files (*.xlsx);;CSV Files (*.csv)",
         )
         if file_path:
-            if file_path.endswith(".csv"):
-                Exporter.export_to_csv(results, file_path)
-            else:
-                Exporter.export_to_xlsx(results, file_path)
+            try:
+                if file_path.endswith(".csv"):
+                    Exporter.export_to_csv(results, file_path)
+                else:
+                    Exporter.export_to_xlsx(results, file_path)
+                QMessageBox.information(self, "Export Complete", f"Exported {len(results)} items to:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Failed", f"Failed to export data:\n{e}")
