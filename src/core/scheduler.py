@@ -148,13 +148,31 @@ class RefreshWorker(QObject):
                 ts = response.token_status
                 self.token_status_updated.emit(ts.tokens_left, ts.refill_rate, ts.refill_in_seconds)
 
+                # Build a map of ASIN -> product for title extraction
+                asin_to_product: dict[str, dict] = {}
+                for product in response.products:
+                    asin_to_product[product.get("asin", "")] = product
+
                 # Save snapshots and compute scores
                 for snapshot in snapshots:
                     asin = snapshot.asin
                     candidates_for_asin = asin_to_candidates.get(asin, [])
 
+                    # Extract title from Keepa product data
+                    product = asin_to_product.get(asin, {})
+                    keepa_title = KeepaClient.get_product_title(product)
+                    keepa_brand = KeepaClient.get_product_brand(product)
+
                     for candidate in candidates_for_asin:
                         if candidate.id:
+                            # Update candidate title if we have one from Keepa and candidate doesn't have one
+                            if keepa_title and not candidate.title:
+                                self.repo.update_candidate_title(
+                                    candidate.id,
+                                    title=keepa_title,
+                                    amazon_brand=keepa_brand if keepa_brand else None,
+                                )
+
                             # Save Keepa snapshot
                             self.repo.save_keepa_snapshot(candidate.id, snapshot)
 

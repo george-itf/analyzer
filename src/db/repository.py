@@ -339,6 +339,28 @@ class Repository:
             )
             session.execute(stmt)
 
+    def update_candidate_title(
+        self,
+        candidate_id: int,
+        title: str,
+        amazon_brand: str | None = None,
+    ) -> None:
+        """Update the title (and optionally brand) of a candidate from Keepa data."""
+        with session_scope() as session:
+            values: dict[str, Any] = {"updated_at": datetime.now()}
+            if title:
+                values["title"] = title
+            if amazon_brand:
+                values["amazon_brand"] = amazon_brand
+
+            if len(values) > 1:  # More than just updated_at
+                stmt = (
+                    update(AsinCandidateDB)
+                    .where(AsinCandidateDB.id == candidate_id)
+                    .values(**values)
+                )
+                session.execute(stmt)
+
     def get_all_active_candidates(self) -> list[AsinCandidate]:
         """Get all active ASIN candidates across all brands."""
         with session_scope() as session:

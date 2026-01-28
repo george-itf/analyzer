@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -23,10 +25,91 @@ from PyQt6.QtWidgets import (
 )
 
 from src.core.csv_importer import CsvImporter, CsvValidationError
-from src.core.models import AsinCandidate, Brand, CandidateSource
+from src.core.models import AsinCandidate, Brand, CandidateSource, SupplierItem
 from src.db.repository import Repository
 
 logger = logging.getLogger(__name__)
+
+
+class AsinSearchWorker(QThread):
+    """Background worker to search for ASINs via SP-API."""
+
+    progress = pyqtSignal(int, int, str)  # current, total, message
+    item_found = pyqtSignal(int, int)  # supplier_item_id, candidates_found
+    finished_signal = pyqtSignal(int, int)  # total_items, total_candidates
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        items: list[SupplierItem],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._items = items
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Cancel the search operation."""
+        self._cancelled = True
+
+    def run(self) -> None:
+        """Run the ASIN search for all items."""
+        from src.api.spapi import SpApiClient
+        from src.core.config import get_settings
+
+        settings = get_settings()
+        spapi = SpApiClient(settings)
+        repo = Repository()
+
+        total = len(self._items)
+        total_candidates = 0
+        items_with_matches = 0
+
+        for i, item in enumerate(self._items):
+            if self._cancelled:
+                break
+
+            # Skip items that already have ASIN hints (they already have candidates)
+            if item.asin_hint:
+                self.progress.emit(i + 1, total, f"Skipped {item.part_number} (has ASIN)")
+                continue
+
+            # Search for ASINs using EAN, MPN, and description
+            self.progress.emit(i + 1, total, f"Searching {item.part_number}...")
+
+            try:
+                candidates = spapi.search_asins_for_item(
+                    ean=item.ean,
+                    mpn=item.mpn,
+                    description=item.description,
+                    brand=item.brand.value,
+                )
+
+                # Save candidates to database
+                candidates_saved = 0
+                for candidate in candidates:
+                    # Check if this ASIN already exists for this item
+                    existing = repo.get_candidate_by_asin(item.id, candidate.asin)
+                    if not existing:
+                        candidate.supplier_item_id = item.id
+                        candidate.brand = item.brand
+                        candidate.supplier = item.supplier
+                        candidate.part_number = item.part_number
+                        candidate.is_active = True
+                        candidate.is_primary = candidates_saved == 0  # First one is primary
+                        repo.save_asin_candidate(candidate)
+                        candidates_saved += 1
+
+                if candidates_saved > 0:
+                    total_candidates += candidates_saved
+                    items_with_matches += 1
+                    self.item_found.emit(item.id, candidates_saved)
+
+            except Exception as e:
+                logger.warning(f"Failed to search ASINs for {item.part_number}: {e}")
+                continue
+
+        self.finished_signal.emit(items_with_matches, total_candidates)
 
 
 class ImportsTab(QWidget):
@@ -39,6 +122,7 @@ class ImportsTab(QWidget):
         self._repo = Repository()
         self._importer = CsvImporter()
         self._current_file: str | None = None
+        self._search_worker: AsinSearchWorker | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -89,6 +173,11 @@ class ImportsTab(QWidget):
 
         layout.addWidget(validation_group)
 
+        # Auto-search checkbox
+        self.auto_search_checkbox = QCheckBox("Auto-search ASINs after import (uses SP-API)")
+        self.auto_search_checkbox.setChecked(True)
+        layout.addWidget(self.auto_search_checkbox)
+
         # Import button and progress
         import_layout = QHBoxLayout()
 
@@ -96,10 +185,19 @@ class ImportsTab(QWidget):
         self.progress_bar.setVisible(False)
         import_layout.addWidget(self.progress_bar, stretch=1)
 
+        self.progress_label = QLabel("")
+        self.progress_label.setVisible(False)
+        import_layout.addWidget(self.progress_label)
+
         self.import_btn = QPushButton("Import File")
         self.import_btn.setEnabled(False)
         self.import_btn.clicked.connect(self._on_import)
         import_layout.addWidget(self.import_btn)
+
+        self.cancel_btn = QPushButton("Cancel Search")
+        self.cancel_btn.setVisible(False)
+        self.cancel_btn.clicked.connect(self._on_cancel_search)
+        import_layout.addWidget(self.cancel_btn)
 
         layout.addLayout(import_layout)
 
@@ -202,6 +300,7 @@ class ImportsTab(QWidget):
 
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
+        self.progress_bar.setMaximum(100)
         self.import_btn.setEnabled(False)
 
         try:
@@ -223,7 +322,8 @@ class ImportsTab(QWidget):
             self.progress_bar.setValue(60)
 
             # Create ASIN candidates from CSV hints
-            candidates_created = 0
+            candidates_from_csv = 0
+            items_without_asin = []
             for item in saved_items:
                 if item.asin_hint and item.id:
                     # Check for existing candidate
@@ -242,7 +342,10 @@ class ImportsTab(QWidget):
                             is_primary=True,
                         )
                         self._repo.save_asin_candidate(candidate)
-                        candidates_created += 1
+                        candidates_from_csv += 1
+                else:
+                    # Track items that need ASIN search
+                    items_without_asin.append(item)
 
             self.progress_bar.setValue(100)
 
@@ -252,7 +355,8 @@ class ImportsTab(QWidget):
                 f"  File: {Path(self._current_file).name}\n"
                 f"  Items imported: {result.items_imported}\n"
                 f"  Items skipped: {result.items_skipped}\n"
-                f"  ASIN candidates created: {candidates_created}\n"
+                f"  ASIN candidates from CSV: {candidates_from_csv}\n"
+                f"  Items needing ASIN search: {len(items_without_asin)}\n"
             )
 
             if result.warnings:
@@ -261,19 +365,90 @@ class ImportsTab(QWidget):
             self.history_text.append(log_msg)
             logger.info(log_msg)
 
-            QMessageBox.information(
-                self,
-                "Import Complete",
-                f"Successfully imported {result.items_imported} items.\n"
-                f"Created {candidates_created} ASIN candidate mappings.",
-            )
-
+            # Emit import completed signal
             self.import_completed.emit(result.batch_id)
+
+            # Auto-search for ASINs if enabled and there are items without ASINs
+            if self.auto_search_checkbox.isChecked() and items_without_asin:
+                self.history_text.append(
+                    f"\nStarting auto-ASIN search for {len(items_without_asin)} items...\n"
+                )
+                self._start_asin_search(items_without_asin)
+            else:
+                QMessageBox.information(
+                    self,
+                    "Import Complete",
+                    f"Successfully imported {result.items_imported} items.\n"
+                    f"Created {candidates_from_csv} ASIN candidate mappings from CSV.",
+                )
+                self.progress_bar.setVisible(False)
+                self.import_btn.setEnabled(True)
 
         except Exception as e:
             QMessageBox.critical(self, "Import Error", f"Import failed: {e}")
             logger.exception("Import failed")
-
-        finally:
             self.progress_bar.setVisible(False)
+            self.import_btn.setEnabled(True)
+
+    def _start_asin_search(self, items: list[SupplierItem]) -> None:
+        """Start the background ASIN search."""
+        self.progress_bar.setValue(0)
+        self.progress_bar.setMaximum(len(items))
+        self.progress_label.setVisible(True)
+        self.progress_label.setText("Starting ASIN search...")
+        self.cancel_btn.setVisible(True)
+
+        self._search_worker = AsinSearchWorker(items, self)
+        self._search_worker.progress.connect(self._on_search_progress)
+        self._search_worker.item_found.connect(self._on_item_found)
+        self._search_worker.finished_signal.connect(self._on_search_finished)
+        self._search_worker.error.connect(self._on_search_error)
+        self._search_worker.start()
+
+    def _on_search_progress(self, current: int, total: int, message: str) -> None:
+        """Handle search progress updates."""
+        self.progress_bar.setValue(current)
+        self.progress_label.setText(f"{current}/{total}: {message}")
+        QApplication.processEvents()
+
+    def _on_item_found(self, supplier_item_id: int, candidates_found: int) -> None:
+        """Handle when ASINs are found for an item."""
+        self.history_text.append(f"  Found {candidates_found} ASINs for item #{supplier_item_id}")
+
+    def _on_search_finished(self, items_with_matches: int, total_candidates: int) -> None:
+        """Handle search completion."""
+        self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
+        self.cancel_btn.setVisible(False)
+        self.import_btn.setEnabled(True)
+
+        log_msg = (
+            f"\nASIN search completed:\n"
+            f"  Items with matches: {items_with_matches}\n"
+            f"  Total ASIN candidates found: {total_candidates}\n"
+        )
+        self.history_text.append(log_msg)
+        logger.info(log_msg)
+
+        QMessageBox.information(
+            self,
+            "ASIN Search Complete",
+            f"Found {total_candidates} ASIN candidates for {items_with_matches} items.",
+        )
+
+        self._search_worker = None
+
+    def _on_search_error(self, error_msg: str) -> None:
+        """Handle search error."""
+        self.history_text.append(f"  Error: {error_msg}")
+        logger.error(f"ASIN search error: {error_msg}")
+
+    def _on_cancel_search(self) -> None:
+        """Cancel the running ASIN search."""
+        if self._search_worker:
+            self._search_worker.cancel()
+            self.history_text.append("\nASIN search cancelled by user.\n")
+            self.progress_bar.setVisible(False)
+            self.progress_label.setVisible(False)
+            self.cancel_btn.setVisible(False)
             self.import_btn.setEnabled(True)

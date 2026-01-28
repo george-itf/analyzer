@@ -205,7 +205,11 @@ class KeepaClient:
         )
 
     def parse_product_to_snapshot(self, product: dict) -> KeepaSnapshot:
-        """Parse a Keepa product response into a KeepaSnapshot."""
+        """Parse a Keepa product response into a KeepaSnapshot.
+
+        Note: Product title is available via get_product_title() method
+        to update ASIN candidates separately.
+        """
         asin = product.get("asin", "")
 
         # Parse price data
@@ -382,6 +386,19 @@ class KeepaClient:
                 continue
 
         return snapshots, response
+
+    @staticmethod
+    def get_product_title(product: dict) -> str:
+        """Extract product title from Keepa product data.
+
+        Keepa stores the title in the 'title' field of the product object.
+        """
+        return product.get("title", "")
+
+    @staticmethod
+    def get_product_brand(product: dict) -> str:
+        """Extract product brand from Keepa product data."""
+        return product.get("brand", "")
 
 
 class KeepaRateLimitError(Exception):
