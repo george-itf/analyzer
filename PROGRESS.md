@@ -23,5 +23,5 @@
 ## Lower Priority
 - [x] Dark mode
 - [x] Keyboard shortcuts
-- [ ] Tray icon
+- [x] Tray icon
 - [ ] Auto-update
