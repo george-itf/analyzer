@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, desc, func, select, update
+from sqlalchemy import and_, case, desc, func, select, update
 from sqlalchemy.orm import Session
 
 from src.core.models import (
@@ -735,7 +735,7 @@ class Repository:
                 select(
                     func.sum(ApiLogDB.tokens_consumed).label("total_tokens"),
                     func.count(ApiLogDB.id).label("total_calls"),
-                    func.sum(func.case((ApiLogDB.success == True, 1), else_=0)).label("success_count"),
+                    func.sum(case((ApiLogDB.success == True, 1), else_=0)).label("success_count"),
                 )
                 .where(
                     and_(
