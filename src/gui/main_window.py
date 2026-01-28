@@ -26,6 +26,7 @@ from PyQt6.QtGui import QIcon
 from src.core.config import Settings, get_settings
 from src.core.models import Alert, Brand, ScoreResult
 from src.core.scheduler import RefreshController
+from src.core.updater import Updater, UpdateInfo, get_current_version
 from src.db.repository import Repository
 
 from .brand_tab import BrandTab
@@ -57,6 +58,7 @@ class MainWindow(QMainWindow):
         self._setup_tray_icon()
         self._connect_signals()
         self._load_initial_data()
+        self._check_for_updates_on_startup()
 
     def _build_ui(self) -> None:
         """Build the main window UI."""
@@ -86,11 +88,21 @@ class MainWindow(QMainWindow):
 
         top_bar.addStretch()
 
+        # Version label
+        self.version_label = QLabel(f"v{get_current_version()}")
+        self.version_label.setStyleSheet("color: #6c757d; font-size: 11px;")
+        top_bar.addWidget(self.version_label)
+
         # Refresh toggle
         self.refresh_btn = QPushButton("Start Refresh")
         self.refresh_btn.setCheckable(True)
         self.refresh_btn.clicked.connect(self._on_toggle_refresh)
         top_bar.addWidget(self.refresh_btn)
+
+        # Check updates button
+        self.update_btn = QPushButton("Check Updates")
+        self.update_btn.clicked.connect(self._on_check_updates)
+        top_bar.addWidget(self.update_btn)
 
         main_layout.addLayout(top_bar)
 
@@ -435,6 +447,67 @@ class MainWindow(QMainWindow):
         if self._refresh_controller and self._refresh_controller.is_running:
             self._stop_refresh()
             self._start_refresh()
+
+    def _check_for_updates_on_startup(self) -> None:
+        """Check for updates when app starts (silent, non-blocking)."""
+        if not self._settings.check_updates_on_startup:
+            return
+
+        self._updater = Updater()
+        self._updater.check_for_updates_async(
+            on_update=self._on_update_available,
+            on_error=lambda e: logger.debug(f"Update check failed: {e}"),
+        )
+
+    def _on_check_updates(self) -> None:
+        """Handle manual update check."""
+        self.update_btn.setEnabled(False)
+        self.update_btn.setText("Checking...")
+        self.status_bar.showMessage("Checking for updates...")
+
+        self._updater = Updater()
+        self._updater.check_for_updates_async(
+            on_update=self._on_update_available,
+            on_no_update=self._on_no_update,
+            on_error=self._on_update_error,
+        )
+
+    def _on_update_available(self, update_info: UpdateInfo) -> None:
+        """Handle update available notification."""
+        self.update_btn.setEnabled(True)
+        self.update_btn.setText("Check Updates")
+
+        # Update version label to show update available
+        self.version_label.setText(f"v{get_current_version()} → v{update_info.version}")
+        self.version_label.setStyleSheet("color: #28a745; font-weight: bold; font-size: 11px;")
+
+        # Show dialog
+        reply = QMessageBox.question(
+            self,
+            "Update Available",
+            f"A new version is available!\n\n"
+            f"Current: v{get_current_version()}\n"
+            f"Latest: v{update_info.version}\n\n"
+            f"Release notes:\n{update_info.release_notes[:500]}...\n\n"
+            f"Would you like to open the download page?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            Updater.open_download_page(update_info.download_url or Updater.get_github_releases_url())
+
+    def _on_no_update(self) -> None:
+        """Handle no update available."""
+        self.update_btn.setEnabled(True)
+        self.update_btn.setText("Check Updates")
+        self.status_bar.showMessage("You're running the latest version!", 5000)
+
+    def _on_update_error(self, error: str) -> None:
+        """Handle update check error."""
+        self.update_btn.setEnabled(True)
+        self.update_btn.setText("Check Updates")
+        self.status_bar.showMessage(f"Update check failed: {error}", 5000)
 
     def closeEvent(self, event) -> None:
         """Handle window close."""
