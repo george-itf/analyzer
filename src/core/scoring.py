@@ -315,13 +315,20 @@ class ScoringEngine:
             fbm_price_now, fbm_price_median, brand_settings.safe_price_buffer_pct
         )
 
-        # Get shipping cost
+        # Get shipping cost and fees based on fulfillment mode
         weight_kg = spapi.weight_kg if spapi else None
-        shipping_result = self.shipping_calculator.calculate(weight_kg)
-        shipping_cost = shipping_result.cost_gbp
+        is_fba = self.settings.fba_mode
 
-        # Get fees
-        fees_gross = spapi.fee_total_gross if spapi else None
+        if is_fba:
+            # FBA mode: no shipping cost (Amazon handles it), use FBA fees
+            shipping_result = self.shipping_calculator.calculate(weight_kg)  # Still need tier for penalties
+            shipping_cost = Decimal("0")  # Amazon handles shipping
+            fees_gross = spapi.fee_total_gross if spapi else None  # Includes FBA fees
+        else:
+            # FBM mode: we pay shipping, standard referral fees
+            shipping_result = self.shipping_calculator.calculate(weight_kg)
+            shipping_cost = shipping_result.cost_gbp
+            fees_gross = spapi.fee_total_gross if spapi else None
 
         # Calculate both scenarios
         scenario_1 = self.calculate_profit_scenario(

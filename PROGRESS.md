@@ -13,15 +13,15 @@
 ## High Value Features
 - [x] Bulk ASIN search (done in WIP commit)
 - [x] Auto-refresh on import (priority queue)
-- [ ] Price alerts
+- [x] Price alerts
 
 ## Medium Features
 - [ ] FBA mode toggle
 - [ ] Competitor tracking
-- [ ] Dashboard tab
+- [x] Dashboard tab
 
 ## Lower Priority
-- [ ] Dark mode
-- [ ] Keyboard shortcuts
+- [x] Dark mode
+- [x] Keyboard shortcuts
 - [ ] Tray icon
 - [ ] Auto-update

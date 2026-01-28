@@ -147,7 +147,8 @@ class Settings(BaseSettings):
     marketplace_id: str = "A1F83G8C2ARO7P"  # Amazon.co.uk
     marketplace_domain: str = "amazon.co.uk"
     condition: str = "NEW"
-    fulfilment: str = "FBM"
+    fulfilment: str = "FBM"  # "FBM" or "FBA"
+    fba_mode: bool = False  # When True, calculate FBA fees instead of FBM
 
     # Shipping
     shipping: ShippingConfig = Field(default_factory=ShippingConfig)
