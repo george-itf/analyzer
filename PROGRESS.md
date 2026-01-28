@@ -3,16 +3,16 @@
 ## Technical Debt
 - [x] Auto-ASIN discovery (done in WIP commit)
 - [ ] Alembic migrations setup
-- [ ] SP-API batch fees
-- [ ] Score history visualization (sparklines)
+- [x] SP-API batch fees
+- [x] Score history visualization (sparklines)
 - [ ] Multi-marketplace support
-- [ ] Refresh worker error recovery (retry queue)
+- [x] Refresh worker error recovery (retry queue)
 - [ ] GUI unit tests (pytest-qt)
-- [ ] Settings persistence fix
+- [x] Settings persistence fix
 
 ## High Value Features
 - [x] Bulk ASIN search (done in WIP commit)
-- [ ] Auto-refresh on import
+- [x] Auto-refresh on import (priority queue)
 - [ ] Price alerts
 
 ## Medium Features

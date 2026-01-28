@@ -290,6 +290,35 @@ class ScoreHistory:
     calculated_at: datetime = field(default_factory=datetime.now)
 
 
+class AlertType(str, Enum):
+    """Types of alerts."""
+
+    SCORE_INCREASE = "score_increase"
+    SCORE_DECREASE = "score_decrease"
+    SCORE_THRESHOLD = "score_threshold"
+    PROFIT_INCREASE = "profit_increase"
+    NEW_OPPORTUNITY = "new_opportunity"
+    RESTRICTION_CHANGE = "restriction_change"
+
+
+@dataclass
+class Alert:
+    """A price/score alert."""
+
+    id: int | None = None
+    alert_type: AlertType = AlertType.SCORE_INCREASE
+    asin: str = ""
+    part_number: str = ""
+    brand: str = ""
+    title: str = ""
+    message: str = ""
+    old_value: Decimal | None = None
+    new_value: Decimal | None = None
+    created_at: datetime = field(default_factory=datetime.now)
+    is_read: bool = False
+    is_dismissed: bool = False
+
+
 @dataclass
 class TokenStatus:
     """Keepa token status."""

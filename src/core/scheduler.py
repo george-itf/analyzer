@@ -13,6 +13,7 @@ from PyQt6.QtCore import QMutex, QObject, QThread, QTimer, pyqtSignal
 
 from src.api.keepa import KeepaClient, KeepaRateLimitError
 from src.api.spapi import SpApiClient, SpApiRateLimitError
+from src.core.alerts import AlertManager
 from src.core.config import Settings, get_settings
 from src.core.models import (
     AsinCandidate,
@@ -38,6 +39,7 @@ class RefreshWorker(QObject):
     batch_completed = pyqtSignal(str, int, int)  # pass_name, success_count, fail_count
     error_occurred = pyqtSignal(str)
     log_message = pyqtSignal(str)
+    alert_triggered = pyqtSignal(object)  # Alert object
 
     def __init__(self, settings: Settings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -46,6 +48,10 @@ class RefreshWorker(QObject):
         self.keepa = KeepaClient(settings)
         self.spapi = SpApiClient(settings)
         self.scoring = ScoringEngine(settings)
+        self.alert_manager = AlertManager(settings.alerts)
+
+        # Forward alert signals
+        self.alert_manager.alert_triggered.connect(self.alert_triggered)
 
         self._running = False
         self._paused = False
@@ -83,6 +89,32 @@ class RefreshWorker(QObject):
             self.log_message.emit(f"Queued {len(asins)} ASINs for priority refresh")
         finally:
             self._mutex.unlock()
+
+    def _save_score_and_check_alerts(
+        self,
+        candidate: AsinCandidate,
+        result: ScoreResult,
+        is_new: bool = False,
+    ) -> None:
+        """Save score history and check for alerts."""
+        if not candidate.id:
+            return
+
+        # Get previous score for comparison
+        previous = self.repo.get_latest_score(candidate.id)
+
+        # Save new score
+        self.repo.save_score_history(candidate.id, result)
+
+        # Emit score update signal
+        self.score_updated.emit(
+            candidate.brand.value,
+            candidate.asin,
+            result.score,
+        )
+
+        # Check for alerts
+        self.alert_manager.check_for_alerts(result, previous, is_new=is_new)
 
     def _add_to_retry_queue(self, asin: str, current_retry: int = 0) -> None:
         """Add an ASIN to the retry queue with exponential backoff."""
@@ -172,12 +204,7 @@ class RefreshWorker(QObject):
                         item = self.repo.get_supplier_item_by_id(candidate.supplier_item_id)
                         if item:
                             result = self.scoring.calculate(item, candidate, snapshot, spapi_snapshot)
-                            self.repo.save_score_history(candidate.id, result)
-                            self.score_updated.emit(
-                                candidate.brand.value,
-                                candidate.asin,
-                                result.score,
-                            )
+                            self._save_score_and_check_alerts(candidate, result)
 
             # Re-queue failed ASINs
             for asin in asin_to_candidates:
@@ -266,12 +293,7 @@ class RefreshWorker(QObject):
                         item = self.repo.get_supplier_item_by_id(candidate.supplier_item_id)
                         if item:
                             result = self.scoring.calculate(item, candidate, snapshot, spapi_snapshot)
-                            self.repo.save_score_history(candidate.id, result)
-                            self.score_updated.emit(
-                                candidate.brand.value,
-                                candidate.asin,
-                                result.score,
-                            )
+                            self._save_score_and_check_alerts(candidate, result, is_new=True)
                             success_count += 1
 
             self.batch_completed.emit("priority", success_count, 0)
@@ -407,15 +429,8 @@ class RefreshWorker(QObject):
                                 # Compute score
                                 result = self.scoring.calculate(item, candidate, snapshot, spapi_snapshot)
 
-                                # Save score history
-                                self.repo.save_score_history(candidate.id, result)
-
-                                # Emit signal
-                                self.score_updated.emit(
-                                    candidate.brand.value,
-                                    candidate.asin,
-                                    result.score,
-                                )
+                                # Save score and check alerts
+                                self._save_score_and_check_alerts(candidate, result)
                                 success_count += 1
 
                 # Log API call
@@ -675,6 +690,7 @@ class RefreshController(QObject):
     batch_completed = pyqtSignal(str, int, int)
     error_occurred = pyqtSignal(str)
     log_message = pyqtSignal(str)
+    alert_triggered = pyqtSignal(object)  # Alert object
 
     def __init__(self, settings: Settings, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -702,6 +718,7 @@ class RefreshController(QObject):
         self._worker.batch_completed.connect(self.batch_completed)
         self._worker.error_occurred.connect(self.error_occurred)
         self._worker.log_message.connect(self.log_message)
+        self._worker.alert_triggered.connect(self.alert_triggered)
 
         self._thread.started.connect(self._worker.start_refresh)
         self._thread.start()

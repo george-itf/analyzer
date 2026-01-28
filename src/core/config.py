@@ -106,6 +106,19 @@ class RefreshConfig(BaseModel):
     max_concurrent_requests: int = 3
 
 
+class AlertConfig(BaseModel):
+    """Alert configuration."""
+
+    enabled: bool = True
+    score_increase_threshold: int = 10  # Alert when score increases by this much
+    score_decrease_threshold: int = 15  # Alert when score decreases by this much
+    score_above_threshold: int = 70  # Alert when score crosses above this
+    profit_increase_threshold: Decimal = Decimal("5.00")  # Alert when profit increases by £
+    new_opportunity_min_score: int = 60  # Alert for new items scoring above this
+    play_sound: bool = True
+    show_notification: bool = True
+
+
 class ApiConfig(BaseModel):
     """API configuration."""
 
@@ -146,6 +159,9 @@ class Settings(BaseSettings):
 
     # Refresh settings
     refresh: RefreshConfig = Field(default_factory=RefreshConfig)
+
+    # Alert settings
+    alerts: AlertConfig = Field(default_factory=AlertConfig)
 
     # API settings
     api: ApiConfig = Field(default_factory=ApiConfig)

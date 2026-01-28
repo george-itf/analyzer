@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.core.config import Settings, get_settings
-from src.core.models import Brand, ScoreResult
+from src.core.models import Alert, Brand, ScoreResult
 from src.core.scheduler import RefreshController
 from src.db.repository import Repository
 
@@ -70,6 +70,13 @@ class MainWindow(QMainWindow):
         # Last refresh time
         self.last_refresh_label = QLabel("Last refresh: —")
         top_bar.addWidget(self.last_refresh_label)
+
+        # Alert indicator
+        self.alert_label = QLabel("🔔 0")
+        self.alert_label.setStyleSheet("color: #6c757d; font-weight: bold;")
+        self.alert_label.setToolTip("No new alerts")
+        top_bar.addWidget(self.alert_label)
+        self._alert_count = 0
 
         top_bar.addStretch()
 
@@ -199,6 +206,7 @@ class MainWindow(QMainWindow):
         self._refresh_controller.batch_completed.connect(self._on_batch_completed)
         self._refresh_controller.error_occurred.connect(self._on_refresh_error)
         self._refresh_controller.log_message.connect(self._on_refresh_log)
+        self._refresh_controller.alert_triggered.connect(self._on_alert_triggered)
 
         self._refresh_controller.start()
         self.status_bar.showMessage("Refresh started")
@@ -243,6 +251,26 @@ class MainWindow(QMainWindow):
     def _on_refresh_log(self, message: str) -> None:
         """Handle refresh log message."""
         self.diagnostics_tab.append_log(message)
+
+    def _on_alert_triggered(self, alert: Alert) -> None:
+        """Handle a new alert from the refresh worker."""
+        self._alert_count += 1
+        self.alert_label.setText(f"🔔 {self._alert_count}")
+        self.alert_label.setStyleSheet("color: #dc3545; font-weight: bold;")  # Red when alerts
+        self.alert_label.setToolTip(f"Latest: {alert.message}")
+
+        # Log the alert
+        self.diagnostics_tab.append_log(f"ALERT: {alert.message}")
+
+        # Show in status bar
+        self.status_bar.showMessage(f"Alert: {alert.message}", 5000)
+
+        # Optional: play system sound
+        if self._settings.alerts.play_sound:
+            try:
+                QApplication.beep()
+            except Exception:
+                pass  # Ignore sound errors
 
     def _on_import_completed(self, batch_id: str) -> None:
         """Handle CSV import completion."""
