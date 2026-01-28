@@ -4,13 +4,44 @@ from __future__ import annotations
 
 import logging
 import sys
+import traceback
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from src.core.config import get_config_dir, get_settings
 from src.db.session import init_database
+
+
+def setup_exception_handler() -> None:
+    """Set up global exception handler for unhandled exceptions."""
+    logger = logging.getLogger(__name__)
+
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        """Handle uncaught exceptions."""
+        if issubclass(exc_type, KeyboardInterrupt):
+            # Allow Ctrl+C to exit normally
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+
+        # Log the exception
+        logger.critical(
+            "Unhandled exception",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+
+        # Show error dialog if QApplication exists
+        app = QApplication.instance()
+        if app:
+            error_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+            QMessageBox.critical(
+                None,
+                "Unexpected Error",
+                f"An unexpected error occurred:\n\n{exc_value}\n\nSee log file for details.",
+            )
+
+    sys.excepthook = handle_exception
 
 
 def setup_logging() -> None:
@@ -33,6 +64,7 @@ def setup_logging() -> None:
 def main() -> int:
     """Application entry point."""
     setup_logging()
+    setup_exception_handler()
     logger = logging.getLogger(__name__)
 
     logger.info("Starting Seller Opportunity Scanner")

@@ -364,6 +364,14 @@
         let currentBrand = 'all';
         let allData = {};
 
+        // HTML escape function to prevent XSS
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         async function loadData() {
             try {
                 // Load summary
@@ -461,13 +469,15 @@
                 const scoreClass = item.score >= 70 ? 'score-high' : 
                                    item.score >= 40 ? 'score-medium' : 'score-low';
                 const profitClass = item.profit >= 0 ? 'profit' : 'profit negative';
+                const title = escapeHtml((item.title || '').substring(0, 40));
+                const titleEllipsis = item.title && item.title.length > 40 ? '...' : '';
 
                 return `
                     <tr>
                         <td><span class="score-badge ${scoreClass}">${item.score}</span></td>
-                        <td>${item.part_number}</td>
-                        <td><a href="https://www.amazon.co.uk/dp/${item.asin}" target="_blank" class="amazon-link">${item.asin}</a></td>
-                        <td class="hide-mobile">${(item.title || '').substring(0, 40)}${item.title && item.title.length > 40 ? '...' : ''}</td>
+                        <td>${escapeHtml(item.part_number)}</td>
+                        <td><a href="https://www.amazon.co.uk/dp/${encodeURIComponent(item.asin)}" target="_blank" class="amazon-link">${escapeHtml(item.asin)}</a></td>
+                        <td class="hide-mobile">${title}${titleEllipsis}</td>
                         <td class="${profitClass}">£${item.profit.toFixed(2)}</td>
                         <td class="hide-mobile">${(item.margin * 100).toFixed(1)}%</td>
                     </tr>

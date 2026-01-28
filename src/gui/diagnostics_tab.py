@@ -118,7 +118,9 @@ class DiagnosticsTab(QWidget):
                 f"Failed: {stats['failure_count']}"
             )
         except Exception as e:
-            self.stats_label.setText(f"Error loading stats: {e}")
+            import traceback
+            traceback.print_exc()
+            self.stats_label.setText(f"Error loading stats: {type(e).__name__}: {e}")
 
     def _refresh_db_stats(self) -> None:
         """Refresh database statistics."""

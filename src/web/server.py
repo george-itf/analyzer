@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 import socket
 import threading
+import time
 from datetime import datetime
 from decimal import Decimal
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +21,32 @@ logger = logging.getLogger(__name__)
 
 # Template directory
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+# Simple response cache
+_cache: dict[str, tuple[Any, float]] = {}
+_cache_ttl = 30  # seconds
+
+
+def cached(ttl: int = 30):
+    """Decorator to cache expensive endpoint responses."""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            cache_key = f.__name__
+            now = time.time()
+
+            # Check cache
+            if cache_key in _cache:
+                data, timestamp = _cache[cache_key]
+                if now - timestamp < ttl:
+                    return data
+
+            # Call function and cache result
+            result = f(*args, **kwargs)
+            _cache[cache_key] = (result, now)
+            return result
+        return wrapper
+    return decorator
 
 
 def create_app() -> Flask:
@@ -35,6 +63,7 @@ def create_app() -> Flask:
         return render_template("dashboard.html")
 
     @app.route("/api/summary")
+    @cached(ttl=30)
     def api_summary():
         """Get summary statistics."""
         total_items = 0
@@ -126,6 +155,7 @@ def create_app() -> Flask:
         })
 
     @app.route("/api/top")
+    @cached(ttl=30)
     def api_top_opportunities():
         """Get top opportunities across all brands."""
         all_results = []
@@ -156,6 +186,7 @@ def create_app() -> Flask:
         })
 
     @app.route("/api/score-distribution")
+    @cached(ttl=30)
     def api_score_distribution():
         """Get score distribution for histogram."""
         buckets = [0] * 5  # 0-20, 20-40, 40-60, 60-80, 80-100
