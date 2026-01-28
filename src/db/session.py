@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.core.config import get_db_path
 
 from .models import Base
+
+logger = logging.getLogger(__name__)
 
 # Global engine instance
 _engine: Engine | None = None
@@ -69,10 +73,75 @@ def session_scope() -> Generator[Session, None, None]:
         session.close()
 
 
-def init_database() -> None:
-    """Initialize the database schema."""
+def init_database(use_migrations: bool = True) -> None:
+    """Initialize the database schema.
+    
+    Args:
+        use_migrations: If True, use Alembic migrations. If False, use create_all().
+    """
     engine = get_engine()
-    Base.metadata.create_all(engine)
+    
+    if use_migrations:
+        _run_migrations(engine)
+    else:
+        # Fallback to create_all for simple cases
+        Base.metadata.create_all(engine)
+
+
+def _run_migrations(engine: Engine) -> None:
+    """Run Alembic migrations to latest version."""
+    from alembic import command
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+    
+    # Find the alembic.ini file
+    # Look relative to the package location
+    import src
+    package_dir = Path(src.__file__).parent.parent
+    alembic_ini = package_dir / "alembic.ini"
+    migrations_dir = package_dir / "migrations"
+    
+    if not alembic_ini.exists():
+        logger.warning(f"alembic.ini not found at {alembic_ini}, falling back to create_all()")
+        Base.metadata.create_all(engine)
+        return
+    
+    # Create Alembic config
+    alembic_cfg = Config(str(alembic_ini))
+    alembic_cfg.set_main_option("script_location", str(migrations_dir))
+    alembic_cfg.set_main_option("sqlalchemy.url", str(engine.url))
+    
+    # Check current migration state
+    with engine.connect() as connection:
+        context = MigrationContext.configure(connection)
+        current_rev = context.get_current_revision()
+    
+    # Get the head revision
+    script = ScriptDirectory.from_config(alembic_cfg)
+    head_rev = script.get_current_head()
+    
+    if current_rev is None:
+        # Fresh database - check if tables exist
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        
+        if tables and "alembic_version" not in tables:
+            # Tables exist but no alembic_version - stamp the database
+            logger.info("Existing database detected, stamping with current migration version")
+            command.stamp(alembic_cfg, "head")
+        else:
+            # Fresh database - run all migrations
+            logger.info("Running database migrations...")
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Database migrations completed")
+    elif current_rev != head_rev:
+        # Need to upgrade
+        logger.info(f"Upgrading database from {current_rev} to {head_rev}")
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Database upgrade completed")
+    else:
+        logger.debug("Database is up to date")
 
 
 def reset_database() -> None:
