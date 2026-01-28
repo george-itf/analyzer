@@ -587,6 +587,84 @@ class RefreshWorker(QObject):
             )
             return None
 
+    def _batch_prefetch_spapi_fees(
+        self,
+        candidates: list[AsinCandidate],
+        keepa_snapshots: dict[str, KeepaSnapshot],
+    ) -> dict[str, dict]:
+        """Batch prefetch SP-API fees for multiple candidates.
+
+        Returns a dict mapping ASIN to fee response.
+        """
+        # Build list of (ASIN, price) pairs that need fee lookup
+        items_needing_fees: list[tuple[str, Decimal]] = []
+        asin_to_price: dict[str, Decimal] = {}
+        ttl = self.settings.refresh.spapi_cache_ttl_minutes
+
+        for candidate in candidates:
+            if not candidate.id:
+                continue
+
+            keepa = keepa_snapshots.get(candidate.asin)
+            if not keepa:
+                continue
+
+            sell_gross = self.scoring.calculate_sell_gross_safe(
+                keepa.fbm_price_current,
+                keepa.fbm_price_median_30d,
+                self.settings.get_brand_settings(candidate.brand.value).safe_price_buffer_pct,
+            )
+
+            if sell_gross <= 0:
+                continue
+
+            # Check cache
+            cached = self.repo.get_latest_spapi_snapshot(
+                candidate.id, sell_price=sell_gross, ttl_minutes=ttl
+            )
+            if not cached:
+                # Need to fetch
+                if candidate.asin not in asin_to_price:
+                    asin_to_price[candidate.asin] = sell_gross
+                    items_needing_fees.append((candidate.asin, sell_gross))
+
+        if not items_needing_fees:
+            return {}
+
+        self.log_message.emit(f"Batch fetching fees for {len(items_needing_fees)} ASINs...")
+
+        try:
+            fee_results = self.spapi.get_fees_estimates_batch(items_needing_fees, is_fba=False)
+
+            self.repo.save_api_log(
+                api_name="spapi",
+                endpoint="batch_fees",
+                method="POST",
+                request_params=f"count={len(items_needing_fees)}",
+                response_status=200,
+                response_size=0,
+                tokens_consumed=0,
+                duration_ms=0,
+                success=True,
+            )
+
+            return fee_results
+        except Exception as e:
+            self.repo.save_api_log(
+                api_name="spapi",
+                endpoint="batch_fees",
+                method="POST",
+                request_params=f"count={len(items_needing_fees)}",
+                response_status=0,
+                response_size=0,
+                tokens_consumed=0,
+                duration_ms=0,
+                success=False,
+                error_message=str(e),
+            )
+            self.log_message.emit(f"Batch fee fetch failed: {e}")
+            return {}
+
 
 class RefreshController(QObject):
     """Controls the background refresh thread."""

@@ -342,15 +342,100 @@ class SpApiClient:
         items: list[tuple[str, Decimal]],
         currency: str = "GBP",
         is_fba: bool = False,
-    ) -> list[dict]:
-        """Get fee estimates for multiple ASINs."""
-        # SP-API doesn't have a true batch endpoint for fees,
-        # so we make individual requests
-        results = []
-        for asin, price in items:
-            result = self.get_fees_estimate(asin, price, currency, is_fba)
-            results.append({"asin": asin, "price": price, "response": result})
-        return results
+    ) -> dict[str, dict]:
+        """Get fee estimates for multiple ASINs using batch API.
+
+        Returns a dict mapping ASIN to fee response.
+        """
+        if not items:
+            return {}
+
+        # SP-API batch fees endpoint: POST /products/fees/v0/feesEstimate
+        # Limited to 20 items per request
+        path = "/products/fees/v0/feesEstimate"
+        batch_size = 20
+        all_results: dict[str, dict] = {}
+
+        for i in range(0, len(items), batch_size):
+            batch = items[i : i + batch_size]
+
+            # Build batch request body
+            requests_list = []
+            for asin, price in batch:
+                requests_list.append({
+                    "MarketplaceId": UK_MARKETPLACE_ID,
+                    "IdType": "ASIN",
+                    "IdValue": asin,
+                    "IsAmazonFulfilled": is_fba,
+                    "PriceToEstimateFees": {
+                        "ListingPrice": {
+                            "CurrencyCode": currency,
+                            "Amount": float(price),
+                        },
+                        "Shipping": {
+                            "CurrencyCode": currency,
+                            "Amount": 0.0,
+                        },
+                    },
+                    "Identifier": asin,  # Used to match results
+                })
+
+            body = requests_list
+
+            try:
+                response = self._make_request("POST", path, body=body)
+
+                # Parse response - it returns a list of FeesEstimateResult
+                for result in response:
+                    status = result.get("Status", "")
+                    identifier = result.get("FeesEstimateIdentifier", {})
+                    asin = identifier.get("IdValue", "") or identifier.get("SellerInputIdentifier", "")
+
+                    if status == "Success" and asin:
+                        all_results[asin] = result
+                    elif asin:
+                        # Store error result too
+                        all_results[asin] = {"error": result.get("Error", {}).get("Message", "Unknown error")}
+
+            except Exception as e:
+                # On error, fall back to individual requests for this batch
+                for asin, price in batch:
+                    if asin not in all_results:
+                        try:
+                            result = self.get_fees_estimate(asin, price, currency, is_fba)
+                            all_results[asin] = result
+                        except Exception as inner_e:
+                            all_results[asin] = {"error": str(inner_e)}
+
+        return all_results
+
+    def parse_batch_fee_result(self, result: dict) -> tuple[Decimal | None, Decimal | None, Decimal | None, Decimal | None]:
+        """Parse a batch fee result into (total, referral, fba, variable_closing)."""
+        if "error" in result:
+            return None, None, None, None
+
+        estimate = result.get("FeesEstimate", {})
+        fee_details = estimate.get("FeeDetailList", [])
+
+        total = estimate.get("TotalFeesEstimate", {})
+        total_fee = Decimal(str(total.get("Amount", 0))) if total else None
+
+        referral_fee = None
+        fba_fee = None
+        variable_fee = None
+
+        for detail in fee_details:
+            fee_type = detail.get("FeeType", "")
+            fee_amount = Decimal(str(detail.get("FeeAmount", {}).get("Amount", 0)))
+
+            if fee_type == "ReferralFee":
+                referral_fee = fee_amount
+            elif fee_type == "FBAFees":
+                fba_fee = fee_amount
+            elif fee_type == "VariableClosingFee":
+                variable_fee = fee_amount
+
+        return total_fee, referral_fee, fba_fee, variable_fee
 
     def fetch_snapshot(
         self,
