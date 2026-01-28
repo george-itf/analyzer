@@ -238,11 +238,6 @@ class SettingsTab(QWidget):
         self.vat_rate.setValue(float(self._settings.vat_rate))
         global_layout.addRow("VAT Rate:", self.vat_rate)
 
-        self.fba_mode = QCheckBox("FBA Mode (use Amazon fulfillment fees)")
-        self.fba_mode.setChecked(self._settings.fba_mode)
-        self.fba_mode.setToolTip("When enabled, calculates with FBA fees instead of FBM shipping costs")
-        global_layout.addRow(self.fba_mode)
-
         content_layout.addWidget(global_group)
 
         # Shipping settings
@@ -361,7 +356,6 @@ class SettingsTab(QWidget):
 
         # Update global settings
         settings.vat_rate = Decimal(str(self.vat_rate.value()))
-        settings.fba_mode = self.fba_mode.isChecked()
 
         # Update shipping
         settings.shipping.tier_small.max_weight_kg = Decimal(str(self.ship_small_max.value()))
@@ -428,7 +422,6 @@ class SettingsTab(QWidget):
         """Refresh all UI widgets from current settings."""
         # Global settings
         self.vat_rate.setValue(float(self._settings.vat_rate))
-        self.fba_mode.setChecked(self._settings.fba_mode)
 
         # Shipping settings
         self.ship_small_max.setValue(float(self._settings.shipping.tier_small.max_weight_kg))

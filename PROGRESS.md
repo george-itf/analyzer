@@ -5,7 +5,6 @@
 - [ ] Alembic migrations setup
 - [x] SP-API batch fees
 - [x] Score history visualization (sparklines)
-- [ ] Multi-marketplace support
 - [x] Refresh worker error recovery (retry queue)
 - [ ] GUI unit tests (pytest-qt)
 - [x] Settings persistence fix
@@ -16,7 +15,6 @@
 - [x] Price alerts
 
 ## Medium Features
-- [x] FBA mode toggle
 - [ ] Competitor tracking
 - [x] Dashboard tab
 

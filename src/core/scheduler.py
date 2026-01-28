@@ -649,9 +649,7 @@ class RefreshWorker(QObject):
         self.log_message.emit(f"Batch fetching fees for {len(items_needing_fees)} ASINs...")
 
         try:
-            fee_results = self.spapi.get_fees_estimates_batch(
-                items_needing_fees, is_fba=self.settings.fba_mode
-            )
+            fee_results = self.spapi.get_fees_estimates_batch(items_needing_fees, is_fba=False)
 
             self.repo.save_api_log(
                 api_name="spapi",
