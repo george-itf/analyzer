@@ -2,7 +2,7 @@
 
 ## Technical Debt
 - [x] Auto-ASIN discovery (done in WIP commit)
-- [ ] Alembic migrations setup
+- [x] Alembic migrations setup - init_database() uses migrations
 - [x] SP-API batch fees
 - [x] Score history visualization (sparklines)
 - [x] Refresh worker error recovery (retry queue)
@@ -15,7 +15,7 @@
 - [x] Price alerts
 
 ## Medium Features
-- [ ] Competitor tracking
+- [x] Competitor tracking - CompetitorTracker + GUI tab
 - [x] Dashboard tab
 
 ## Lower Priority
