@@ -283,6 +283,185 @@ class TokenStatusWidget(QWidget):
         )
 
 
+class SparklineWidget(QWidget):
+    """Widget displaying a mini sparkline chart for trend visualization."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._values: list[float] = []
+        self._color = QColor(100, 150, 200)
+        self._show_endpoints = True
+        self.setMinimumSize(60, 20)
+        self.setMaximumSize(100, 30)
+
+    @property
+    def values(self) -> list[float]:
+        return self._values
+
+    @values.setter
+    def values(self, data: list[float]) -> None:
+        self._values = data[-20:] if len(data) > 20 else data  # Keep last 20 points
+        self.update()
+
+    @property
+    def color(self) -> QColor:
+        return self._color
+
+    @color.setter
+    def color(self, value: QColor) -> None:
+        self._color = value
+        self.update()
+
+    def get_trend_color(self) -> QColor:
+        """Get color based on trend (green=up, red=down, gray=flat)."""
+        if len(self._values) < 2:
+            return QColor(150, 150, 150)
+
+        first_half = sum(self._values[: len(self._values) // 2]) / max(1, len(self._values) // 2)
+        second_half = sum(self._values[len(self._values) // 2 :]) / max(1, len(self._values) - len(self._values) // 2)
+
+        diff = second_half - first_half
+        if diff > 0.05 * max(abs(first_half), 1):  # 5% increase
+            return QColor(80, 180, 80)  # Green
+        elif diff < -0.05 * max(abs(first_half), 1):  # 5% decrease
+            return QColor(200, 80, 80)  # Red
+        else:
+            return QColor(150, 150, 150)  # Gray
+
+    def paintEvent(self, event) -> None:
+        """Paint the sparkline."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if len(self._values) < 2:
+            # Draw placeholder
+            painter.setPen(QPen(QColor(200, 200, 200)))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "—")
+            return
+
+        # Calculate bounds
+        width = self.width() - 4
+        height = self.height() - 4
+        x_offset = 2
+        y_offset = 2
+
+        min_val = min(self._values)
+        max_val = max(self._values)
+        value_range = max_val - min_val if max_val != min_val else 1
+
+        # Calculate points
+        points = []
+        for i, val in enumerate(self._values):
+            x = x_offset + (i / (len(self._values) - 1)) * width
+            y = y_offset + height - ((val - min_val) / value_range) * height
+            points.append((x, y))
+
+        # Draw line
+        color = self.get_trend_color()
+        pen = QPen(color)
+        pen.setWidth(2)
+        painter.setPen(pen)
+
+        for i in range(len(points) - 1):
+            painter.drawLine(
+                int(points[i][0]), int(points[i][1]),
+                int(points[i + 1][0]), int(points[i + 1][1])
+            )
+
+        # Draw endpoints
+        if self._show_endpoints and points:
+            # Start point
+            painter.setBrush(QBrush(color))
+            painter.drawEllipse(int(points[0][0]) - 2, int(points[0][1]) - 2, 4, 4)
+            # End point
+            painter.drawEllipse(int(points[-1][0]) - 2, int(points[-1][1]) - 2, 4, 4)
+
+
+class SparklineDelegate(QStyledItemDelegate):
+    """Delegate for rendering sparklines in table views."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex,
+    ) -> None:
+        """Paint the sparkline in the cell."""
+        # Get values from model (expects list of floats)
+        values = index.data(Qt.ItemDataRole.UserRole)  # Use UserRole for raw data
+        if not values or not isinstance(values, (list, tuple)) or len(values) < 2:
+            # Fall back to default rendering
+            super().paint(painter, option, index)
+            return
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = option.rect
+
+        # Draw selection highlight
+        if option.state & option.State_Selected:
+            painter.fillRect(rect, option.palette.highlight())
+
+        # Calculate sparkline area
+        margin = 4
+        spark_rect = rect.adjusted(margin, margin, -margin, -margin)
+
+        width = spark_rect.width()
+        height = spark_rect.height()
+
+        min_val = min(values)
+        max_val = max(values)
+        value_range = max_val - min_val if max_val != min_val else 1
+
+        # Calculate points
+        points = []
+        for i, val in enumerate(values):
+            x = spark_rect.x() + (i / (len(values) - 1)) * width
+            y = spark_rect.y() + height - ((val - min_val) / value_range) * height
+            points.append((x, y))
+
+        # Determine trend color
+        first_half = sum(values[: len(values) // 2]) / max(1, len(values) // 2)
+        second_half = sum(values[len(values) // 2 :]) / max(1, len(values) - len(values) // 2)
+        diff = second_half - first_half
+
+        if diff > 0.05 * max(abs(first_half), 1):
+            color = QColor(80, 180, 80)  # Green
+        elif diff < -0.05 * max(abs(first_half), 1):
+            color = QColor(200, 80, 80)  # Red
+        else:
+            color = QColor(150, 150, 150)  # Gray
+
+        # Draw line
+        pen = QPen(color)
+        pen.setWidth(2)
+        painter.setPen(pen)
+
+        for i in range(len(points) - 1):
+            painter.drawLine(
+                int(points[i][0]), int(points[i][1]),
+                int(points[i + 1][0]), int(points[i + 1][1])
+            )
+
+        # Draw endpoint
+        painter.setBrush(QBrush(color))
+        painter.drawEllipse(int(points[-1][0]) - 2, int(points[-1][1]) - 2, 4, 4)
+
+        painter.restore()
+
+    def sizeHint(
+        self,
+        option: QStyleOptionViewItem,
+        index: QModelIndex,
+    ) -> QSize:
+        """Return the preferred size for sparkline cell."""
+        return QSize(80, 30)
+
+
 class FlagLabel(QWidget):
     """Widget for displaying a score flag as a colored label."""
 

@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 from src.core.models import Brand, ScoreResult
 
 from .detail_dialog import DetailDialog
-from .widgets import ScoreRingDelegate
+from .widgets import ScoreRingDelegate, SparklineDelegate
 
 
 class ScoreTableModel(QAbstractTableModel):
@@ -31,6 +31,7 @@ class ScoreTableModel(QAbstractTableModel):
 
     COLUMNS = [
         ("Score", "score"),
+        ("Trend", "trend"),
         ("Part Number", "part_number"),
         ("ASIN", "asin"),
         ("Title", "title"),
@@ -52,13 +53,21 @@ class ScoreTableModel(QAbstractTableModel):
         super().__init__(parent)
         self._results: list[ScoreResult] = []
         self._titles: dict[str, str] = {}  # asin -> title
+        self._profit_history: dict[int, list[float]] = {}  # candidate_id -> list of profit values
 
-    def set_results(self, results: list[ScoreResult], titles: dict[str, str] | None = None) -> None:
+    def set_results(
+        self,
+        results: list[ScoreResult],
+        titles: dict[str, str] | None = None,
+        profit_history: dict[int, list[float]] | None = None,
+    ) -> None:
         """Update the results data."""
         self.beginResetModel()
         self._results = results
         if titles:
             self._titles = titles
+        if profit_history:
+            self._profit_history = profit_history
         self.endResetModel()
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
@@ -88,6 +97,9 @@ class ScoreTableModel(QAbstractTableModel):
             return self._get_display_value(result, col_key)
 
         if role == Qt.ItemDataRole.UserRole:
+            # For trend column, return the sparkline data
+            if col_key == "trend":
+                return self._profit_history.get(result.asin_candidate_id, [])
             return result
 
         if role == Qt.ItemDataRole.BackgroundRole:
@@ -97,7 +109,7 @@ class ScoreTableModel(QAbstractTableModel):
                 return QColor(255, 230, 200)
 
         if role == Qt.ItemDataRole.TextAlignmentRole:
-            if col_key in ("score", "cost_1", "cost_5plus", "sell_gross", "profit", "margin", "sales", "offers"):
+            if col_key in ("score", "trend", "cost_1", "cost_5plus", "sell_gross", "profit", "margin", "sales", "offers"):
                 return Qt.AlignmentFlag.AlignCenter
             return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
 
@@ -114,6 +126,12 @@ class ScoreTableModel(QAbstractTableModel):
         match col_key:
             case "score":
                 return result.score
+            case "trend":
+                # Display value is empty - sparkline delegate handles rendering
+                history = self._profit_history.get(result.asin_candidate_id, [])
+                if len(history) < 2:
+                    return "—"
+                return ""
             case "part_number":
                 return result.part_number
             case "asin":
@@ -223,16 +241,21 @@ class BrandTab(QWidget):
         score_delegate = ScoreRingDelegate(self.table)
         self.table.setItemDelegateForColumn(0, score_delegate)
 
+        # Sparkline delegate for trend column (column 1)
+        sparkline_delegate = SparklineDelegate(self.table)
+        self.table.setItemDelegateForColumn(1, sparkline_delegate)
+
         # Set column widths
         self.table.setColumnWidth(0, 65)  # Score ring
-        self.table.setColumnWidth(1, 120)  # Part Number
-        self.table.setColumnWidth(2, 120)  # ASIN
-        self.table.setColumnWidth(3, 200)  # Title
-        self.table.setColumnWidth(4, 90)  # Cost 1
-        self.table.setColumnWidth(5, 90)  # Cost 5+
-        self.table.setColumnWidth(6, 90)  # Sell
-        self.table.setColumnWidth(7, 90)  # Profit
-        self.table.setColumnWidth(8, 80)  # Margin
+        self.table.setColumnWidth(1, 80)  # Trend sparkline
+        self.table.setColumnWidth(2, 120)  # Part Number
+        self.table.setColumnWidth(3, 120)  # ASIN
+        self.table.setColumnWidth(4, 200)  # Title
+        self.table.setColumnWidth(5, 90)  # Cost 1
+        self.table.setColumnWidth(6, 90)  # Cost 5+
+        self.table.setColumnWidth(7, 90)  # Sell
+        self.table.setColumnWidth(8, 90)  # Profit
+        self.table.setColumnWidth(9, 80)  # Margin
 
         # Set row height for score rings
         self.table.verticalHeader().setDefaultSectionSize(55)
@@ -245,9 +268,14 @@ class BrandTab(QWidget):
         # Sort by score descending by default
         self.table.sortByColumn(0, Qt.SortOrder.DescendingOrder)
 
-    def update_results(self, results: list[ScoreResult], titles: dict[str, str] | None = None) -> None:
+    def update_results(
+        self,
+        results: list[ScoreResult],
+        titles: dict[str, str] | None = None,
+        profit_history: dict[int, list[float]] | None = None,
+    ) -> None:
         """Update the table with new results."""
-        self.model.set_results(results, titles)
+        self.model.set_results(results, titles, profit_history)
         self.count_label.setText(f"{len(results)} items")
 
     def _on_filter_changed(self, text: str) -> None:

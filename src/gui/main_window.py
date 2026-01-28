@@ -144,6 +144,7 @@ class MainWindow(QMainWindow):
 
         results: list[ScoreResult] = []
         titles: dict[str, str] = {}
+        profit_history: dict[int, list[float]] = {}  # candidate_id -> list of profits
 
         for candidate in candidates:
             if candidate.id:
@@ -167,7 +168,14 @@ class MainWindow(QMainWindow):
                         if candidate.title:
                             titles[candidate.asin] = candidate.title
 
-        tab.update_results(results, titles)
+                        # Get profit history for sparkline (last 20 records)
+                        history = self._repo.get_score_history(candidate.id, limit=20)
+                        if history:
+                            # Extract profit values, oldest first
+                            profits = [float(h.profit_net) for h in reversed(history)]
+                            profit_history[candidate.id] = profits
+
+        tab.update_results(results, titles, profit_history)
 
     def _on_toggle_refresh(self, checked: bool) -> None:
         """Toggle background refresh."""
