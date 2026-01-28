@@ -16,7 +16,7 @@
 - [x] Price alerts
 
 ## Medium Features
-- [ ] FBA mode toggle
+- [x] FBA mode toggle
 - [ ] Competitor tracking
 - [x] Dashboard tab
 
