@@ -30,6 +30,7 @@ from src.core.updater import Updater, UpdateInfo, get_current_version
 from src.db.repository import Repository
 
 from .brand_tab import BrandTab
+from .competitors_tab import CompetitorsTab
 from .dashboard_tab import DashboardTab
 from .diagnostics_tab import DiagnosticsTab
 from .imports_tab import ImportsTab
@@ -123,6 +124,10 @@ class MainWindow(QMainWindow):
         # Mappings tab
         self.mappings_tab = MappingsTab()
         self.tabs.addTab(self.mappings_tab, "Mappings")
+
+        # Competitors tab
+        self.competitors_tab = CompetitorsTab()
+        self.tabs.addTab(self.competitors_tab, "Competitors")
 
         # Imports tab
         self.imports_tab = ImportsTab()
