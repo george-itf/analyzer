@@ -48,12 +48,29 @@ class KeepaClient:
         self.api_key = settings.api.keepa_api_key
         self.mock_mode = settings.api.mock_mode
 
-        # Session with keep-alive
+        # Session with keep-alive and retry logic
         self.session = requests.Session()
         self.session.headers.update({
             "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
         })
+        
+        # Configure connection pooling and retries for resilience
+        from urllib3.util.retry import Retry
+        from requests.adapters import HTTPAdapter
+        
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=5,
+            pool_maxsize=10,
+        )
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
         # Token state
         self._token_status = TokenStatus()
@@ -92,7 +109,8 @@ class KeepaClient:
         url = f"{self.BASE_URL}/{endpoint}"
 
         start_time = time.time()
-        response = self.session.get(url, params=params, timeout=timeout)
+        # Use tuple timeout: (connect_timeout, read_timeout)
+        response = self.session.get(url, params=params, timeout=(5, timeout))
         duration_ms = int((time.time() - start_time) * 1000)
 
         self._last_request_time = time.time()
@@ -171,9 +189,8 @@ class KeepaClient:
         # Keepa allows up to 100 ASINs per request
         asins = asins[:100]
 
-        # Build stats parameter
-        # Format: days (90), out-of-stock percentage, demand
-        stats = f"{days},1,1"
+        # Build stats parameter - just the number of days for statistics
+        stats = str(days)
 
         params = {
             "domain": KEEPA_DOMAIN_UK,

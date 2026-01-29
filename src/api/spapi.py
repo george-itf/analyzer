@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 import hmac
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
@@ -75,9 +78,7 @@ class SpApiClient:
 
         if self.mock_mode:
             self._auth.access_token = "mock_access_token"
-            self._auth.expires_at = datetime.now(UTC).replace(
-                hour=datetime.now(UTC).hour + 1
-            )
+            self._auth.expires_at = datetime.now(UTC) + timedelta(hours=1)
             return self._auth.access_token
 
         # Request new access token
@@ -96,9 +97,7 @@ class SpApiClient:
         self._auth.token_type = token_data.get("token_type", "bearer")
 
         expires_in = token_data.get("expires_in", 3600)
-        self._auth.expires_at = datetime.now(UTC).replace(
-            second=datetime.now(UTC).second + expires_in
-        )
+        self._auth.expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
 
         return self._auth.access_token
 
@@ -261,6 +260,65 @@ class SpApiClient:
             return response.get("items", [])
         except Exception:
             return []
+
+    def search_catalog_by_identifiers_batch(
+        self,
+        identifiers: list[str],
+        identifier_type: str = "EAN",
+        max_retries: int = 3,
+    ) -> dict[str, list[dict]]:
+        """Search catalog by multiple identifiers (max 20). Returns dict mapping identifier -> items.
+        
+        Includes automatic retry with backoff for rate limits.
+        """
+        import time
+        
+        if not identifiers:
+            return {}
+        
+        # Initialize results dict
+        results: dict[str, list[dict]] = {ean: [] for ean in identifiers}
+        
+        path = "/catalog/2022-04-01/items"
+        params = {
+            "marketplaceIds": UK_MARKETPLACE_ID,
+            "identifiersType": identifier_type,
+            "identifiers": ",".join(identifiers[:20]),  # Max 20
+            "includedData": "summaries,identifiers",  # Only what we need
+        }
+        
+        for attempt in range(max_retries):
+            try:
+                response = self._make_request("GET", path, params=params)
+                items = response.get("items", [])
+                
+                # Map results back to their identifiers
+                for item in items:
+                    item_identifiers = item.get("identifiers", [])
+                    
+                    for id_group in item_identifiers:
+                        for id_obj in id_group.get("identifiers", []):
+                            if id_obj.get("identifierType") == identifier_type:
+                                ean = id_obj.get("identifier", "")
+                                if ean in results:
+                                    results[ean].append(item)
+                
+                return results  # Success
+                                
+            except Exception as e:
+                error_msg = str(e)
+                
+                # Check for rate limit
+                if "Rate limited" in error_msg or "429" in error_msg or "QuotaExceeded" in error_msg:
+                    wait_time = 60 * (attempt + 1)  # 60s, 120s, 180s
+                    logger.warning(f"Rate limited, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.warning(f"Batch search failed for {len(identifiers)} identifiers: {e}")
+                    break  # Non-rate-limit error, don't retry
+        
+        return results
 
     def search_catalog_by_keywords(
         self,

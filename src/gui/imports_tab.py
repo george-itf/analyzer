@@ -31,12 +31,15 @@ logger = logging.getLogger(__name__)
 
 
 class AsinSearchWorker(QThread):
-    """Background worker to search for ASINs via SP-API."""
+    """Optimized background worker to search for ASINs via SP-API with batching."""
 
     progress = pyqtSignal(int, int, str)  # current, total, message
     item_found = pyqtSignal(int, int)  # supplier_item_id, candidates_found
     finished_signal = pyqtSignal(int, int)  # total_items, total_candidates
     error = pyqtSignal(str)
+
+    BATCH_SIZE = 20
+    BATCH_DELAY = 1.0  # seconds between batches
 
     def __init__(
         self,
@@ -52,7 +55,9 @@ class AsinSearchWorker(QThread):
         self._cancelled = True
 
     def run(self) -> None:
-        """Run the ASIN search for all items."""
+        """Run optimized batch ASIN search."""
+        import time
+        from decimal import Decimal
         from src.api.spapi import SpApiClient
         from src.core.config import get_settings
 
@@ -64,49 +69,97 @@ class AsinSearchWorker(QThread):
         total_candidates = 0
         items_with_matches = 0
 
-        for i, item in enumerate(self._items):
+        # Build EAN -> items mapping
+        ean_to_items: dict[str, list[SupplierItem]] = {}
+        for item in self._items:
+            if item.asin_hint:
+                continue  # Skip items that already have ASINs
+            ean = (item.ean or "").strip()
+            if ean and len(ean) >= 8:
+                if ean not in ean_to_items:
+                    ean_to_items[ean] = []
+                ean_to_items[ean].append(item)
+
+        unique_eans = list(ean_to_items.keys())
+        total_batches = (len(unique_eans) + self.BATCH_SIZE - 1) // self.BATCH_SIZE
+        
+        self.progress.emit(0, total, f"Found {len(unique_eans)} unique EANs...")
+
+        # Process in batches
+        for batch_idx in range(0, len(unique_eans), self.BATCH_SIZE):
             if self._cancelled:
                 break
 
-            # Skip items that already have ASIN hints (they already have candidates)
-            if item.asin_hint:
-                self.progress.emit(i + 1, total, f"Skipped {item.part_number} (has ASIN)")
-                continue
-
-            # Search for ASINs using EAN, MPN, and description
-            self.progress.emit(i + 1, total, f"Searching {item.part_number}...")
+            batch_eans = unique_eans[batch_idx:batch_idx + self.BATCH_SIZE]
+            current_batch = batch_idx // self.BATCH_SIZE + 1
+            
+            self.progress.emit(
+                batch_idx, len(unique_eans),
+                f"Batch {current_batch}/{total_batches} | Found: {total_candidates}"
+            )
 
             try:
-                candidates = spapi.search_asins_for_item(
-                    ean=item.ean,
-                    mpn=item.mpn,
-                    description=item.description,
-                    brand=item.brand.value,
-                )
+                results = spapi.search_catalog_by_identifiers_batch(batch_eans, "EAN")
+                
+                for ean, api_items in results.items():
+                    for item in ean_to_items.get(ean, []):
+                        for api_item in api_items:
+                            asin = api_item.get("asin", "")
+                            if not asin:
+                                continue
 
-                # Save candidates to database
-                candidates_saved = 0
-                for candidate in candidates:
-                    # Check if this ASIN already exists for this item
-                    existing = repo.get_candidate_by_asin(item.id, candidate.asin)
-                    if not existing:
-                        candidate.supplier_item_id = item.id
-                        candidate.brand = item.brand
-                        candidate.supplier = item.supplier
-                        candidate.part_number = item.part_number
-                        candidate.is_active = True
-                        candidate.is_primary = candidates_saved == 0  # First one is primary
-                        repo.save_asin_candidate(candidate)
-                        candidates_saved += 1
+                            existing = repo.get_candidate_by_asin(item.id, asin)
+                            if existing:
+                                continue
 
-                if candidates_saved > 0:
-                    total_candidates += candidates_saved
-                    items_with_matches += 1
-                    self.item_found.emit(item.id, candidates_saved)
+                            # Extract title/brand
+                            summaries = api_item.get("summaries", [])
+                            title, amazon_brand = "", ""
+                            for s in summaries:
+                                if s.get("marketplaceId") == "A1F83G8C2ARO7P":
+                                    title = s.get("itemName", "")
+                                    amazon_brand = s.get("brand", "")
+                                    break
+
+                            # Update existing empty or create new
+                            empty = repo.get_empty_candidate(item.id)
+                            if empty and empty.id:
+                                repo.update_candidate_asin(
+                                    candidate_id=empty.id,
+                                    asin=asin,
+                                    title=title,
+                                    amazon_brand=amazon_brand,
+                                    confidence_score=Decimal("0.95"),
+                                    source=CandidateSource.SPAPI_EAN.value,
+                                    match_reason=f"EAN match: {ean}",
+                                )
+                            else:
+                                candidate = AsinCandidate(
+                                    supplier_item_id=item.id,
+                                    brand=item.brand,
+                                    supplier=item.supplier,
+                                    part_number=item.part_number,
+                                    asin=asin,
+                                    title=title,
+                                    amazon_brand=amazon_brand,
+                                    match_reason=f"EAN match: {ean}",
+                                    confidence_score=Decimal("0.95"),
+                                    source=CandidateSource.SPAPI_EAN,
+                                    is_active=True,
+                                    is_primary=True,
+                                )
+                                repo.save_asin_candidate(candidate)
+
+                            total_candidates += 1
+                            items_with_matches += 1
+                            self.item_found.emit(item.id, 1)
+                            repo.clear_other_primaries(item.id, asin)
+                            break  # One ASIN per item
+
+                time.sleep(self.BATCH_DELAY)
 
             except Exception as e:
-                logger.warning(f"Failed to search ASINs for {item.part_number}: {e}")
-                continue
+                logger.warning(f"Batch search failed: {e}")
 
         self.finished_signal.emit(items_with_matches, total_candidates)
 
@@ -316,8 +369,30 @@ class ImportsTab(QWidget):
                 self.import_btn.setEnabled(True)
                 return
 
+            # Check for duplicates (incremental import)
+            new_items = []
+            duplicates_skipped = 0
+            
+            # Get existing part numbers by brand
+            existing_by_brand: dict[str, set[str]] = {}
+            for item in items:
+                brand_key = item.brand.value
+                if brand_key not in existing_by_brand:
+                    existing_by_brand[brand_key] = self._repo.get_existing_part_numbers(brand_key)
+            
+            for item in items:
+                brand_key = item.brand.value
+                if item.part_number in existing_by_brand[brand_key]:
+                    duplicates_skipped += 1
+                else:
+                    new_items.append(item)
+                    existing_by_brand[brand_key].add(item.part_number)  # Track newly added
+            
+            if duplicates_skipped > 0:
+                self.history_text.append(f"  Skipped {duplicates_skipped} duplicate part numbers\n")
+
             # Save to database
-            saved_items = self._repo.save_supplier_items_batch(items)
+            saved_items = self._repo.save_supplier_items_batch(new_items) if new_items else []
             self.progress_bar.setValue(60)
 
             # Create ASIN candidates from CSV hints
@@ -352,8 +427,10 @@ class ImportsTab(QWidget):
             log_msg = (
                 f"Import completed: {result.batch_id}\n"
                 f"  File: {Path(self._current_file).name}\n"
-                f"  Items imported: {result.items_imported}\n"
-                f"  Items skipped: {result.items_skipped}\n"
+                f"  Items in CSV: {result.items_imported}\n"
+                f"  New items saved: {len(saved_items)}\n"
+                f"  Duplicates skipped: {duplicates_skipped}\n"
+                f"  Invalid rows: {result.items_skipped}\n"
                 f"  ASIN candidates from CSV: {candidates_from_csv}\n"
                 f"  Items needing ASIN search: {len(items_without_asin)}\n"
             )

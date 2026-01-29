@@ -360,6 +360,122 @@ class Repository:
             )
             session.execute(stmt)
 
+    def clear_other_primaries(self, supplier_item_id: int, keep_asin: str) -> None:
+        """Clear primary flag from all candidates except the one with keep_asin."""
+        with session_scope() as session:
+            stmt = (
+                update(AsinCandidateDB)
+                .where(
+                    AsinCandidateDB.supplier_item_id == supplier_item_id,
+                    AsinCandidateDB.asin != keep_asin,
+                )
+                .values(is_primary=False, updated_at=datetime.now())
+            )
+            session.execute(stmt)
+
+    def get_empty_candidate(self, supplier_item_id: int) -> AsinCandidate | None:
+        """Get an existing candidate with empty ASIN for this supplier item."""
+        with session_scope() as session:
+            db_candidate = (
+                session.query(AsinCandidateDB)
+                .filter(
+                    AsinCandidateDB.supplier_item_id == supplier_item_id,
+                    AsinCandidateDB.asin == "",
+                )
+                .first()
+            )
+            if db_candidate:
+                return self._db_to_asin_candidate(db_candidate)
+            return None
+
+    def update_candidate_asin(
+        self,
+        candidate_id: int,
+        asin: str,
+        title: str,
+        amazon_brand: str,
+        confidence_score: "Decimal",
+        source: str,
+        match_reason: str,
+    ) -> None:
+        """Update an existing candidate with ASIN data."""
+        with session_scope() as session:
+            stmt = (
+                update(AsinCandidateDB)
+                .where(AsinCandidateDB.id == candidate_id)
+                .values(
+                    asin=asin,
+                    title=title,
+                    amazon_brand=amazon_brand,
+                    confidence_score=confidence_score,
+                    source=source,
+                    match_reason=match_reason,
+                    is_primary=True,
+                    updated_at=datetime.now(),
+                )
+            )
+            session.execute(stmt)
+
+    def mark_search_attempted(self, candidate_id: int) -> None:
+        """Mark a candidate as searched but no ASIN found."""
+        with session_scope() as session:
+            stmt = (
+                update(AsinCandidateDB)
+                .where(AsinCandidateDB.id == candidate_id)
+                .values(
+                    match_reason="EAN search attempted - no match found",
+                    source="spapi_ean_not_found",
+                    updated_at=datetime.now(),
+                )
+            )
+            session.execute(stmt)
+
+    def find_duplicate_asins(self) -> list[tuple[str, int, list[str]]]:
+        """Find ASINs mapped to multiple part numbers. Returns [(asin, count, part_numbers)]."""
+        from sqlalchemy import func
+        
+        with session_scope() as session:
+            # Find ASINs with multiple mappings
+            duplicates = (
+                session.query(
+                    AsinCandidateDB.asin,
+                    func.count(AsinCandidateDB.id).label("count"),
+                    func.group_concat(AsinCandidateDB.part_number).label("parts"),
+                )
+                .filter(AsinCandidateDB.asin != "")
+                .group_by(AsinCandidateDB.asin)
+                .having(func.count(AsinCandidateDB.id) > 1)
+                .all()
+            )
+            
+            return [(d.asin, d.count, d.parts.split(",")) for d in duplicates]
+
+    def get_existing_part_numbers(self, brand: str) -> set[str]:
+        """Get all existing part numbers for a brand."""
+        with session_scope() as session:
+            results = (
+                session.query(SupplierItemDB.part_number)
+                .filter(SupplierItemDB.brand == brand, SupplierItemDB.is_active == True)
+                .all()
+            )
+            return {r.part_number for r in results}
+
+    def get_import_stats(self) -> dict[str, int]:
+        """Get overall import statistics."""
+        from sqlalchemy import func
+        
+        with session_scope() as session:
+            total_items = session.query(func.count(SupplierItemDB.id)).filter(SupplierItemDB.is_active == True).scalar()
+            items_with_asin = (
+                session.query(func.count(func.distinct(AsinCandidateDB.supplier_item_id)))
+                .filter(AsinCandidateDB.asin != "")
+                .scalar()
+            )
+            return {
+                "total_items": total_items or 0,
+                "items_with_asin": items_with_asin or 0,
+            }
+
     def update_candidate_title(
         self,
         candidate_id: int,
